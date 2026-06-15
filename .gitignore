@@ -1,3 +1,19 @@
+# Environnement virtuel
 ats_syst/
-dataset/
+.venv/
+venv/
+
+# Données (non versionnées)
+data/
+
+# Notes personnelles
 notes/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/

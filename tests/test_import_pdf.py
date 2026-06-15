@@ -1,32 +1,21 @@
-import sys
-import os
+from ats_system.config import CV_DIR
+from ats_system.data import import_pdf
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from tools.data_manager import import_pdf
-
-PDF_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "dataset",
-    "cv",
-    "ACCOUNTANT",
-    "10554236.pdf",
-)
+PDF_PATH = CV_DIR / "ACCOUNTANT" / "10554236.pdf"
 
 
 def test_import_pdf_returns_string():
-    result = import_pdf(PDF_PATH)
+    result = import_pdf(str(PDF_PATH))
     assert isinstance(result, str)
 
 
 def test_import_pdf_not_empty():
-    result = import_pdf(PDF_PATH)
+    result = import_pdf(str(PDF_PATH))
     assert len(result.strip()) > 0
 
 
 def test_import_pdf_content_preview():
-    result = import_pdf(PDF_PATH)
+    result = import_pdf(str(PDF_PATH))
     print("\n--- Aperçu du contenu extrait ---")
     print(result[:500])
     print("---")

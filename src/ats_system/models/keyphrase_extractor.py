@@ -2,6 +2,7 @@ from transformers import pipeline
 
 
 def import_model():
+    """Charge le modèle d'extraction de keyphrases ml6team (BERT, token-classification)."""
     return pipeline(
         "token-classification",
         model="ml6team/keyphrase-extraction-kbir-inspec",

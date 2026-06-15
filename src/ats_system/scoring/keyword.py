@@ -1,7 +1,7 @@
 import re
 import nltk
 from nltk.corpus import stopwords
-from LLMs.word_extractor.ml6team import infer_model
+from ats_system.models.keyphrase_extractor import infer_model
 
 nltk.download('stopwords', quiet=True)
 

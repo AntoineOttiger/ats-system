@@ -4,7 +4,7 @@ import argparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tools.scores import keyword_match_score
+from tools.kw_scores import kw_match_score
 from tools.data_manager import import_pdf
 
 DATASET_DIR = os.path.join(os.path.dirname(__file__), "..", "dataset")
@@ -13,7 +13,7 @@ DEFAULT_CV = os.path.join(DATASET_DIR, "cv", "ENGINEERING", "12472574.pdf")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Calcule le keyword_match_score entre une annonce et un CV (PDFs).")
+    parser = argparse.ArgumentParser(description="Calcule le kw_match_score entre une annonce et un CV (PDFs).")
     parser.add_argument("--offre", default=DEFAULT_OFFRE, help="Chemin vers le PDF de l'annonce")
     parser.add_argument("--cv", default=DEFAULT_CV, help="Chemin vers le PDF du CV")
     args = parser.parse_args()
@@ -21,7 +21,7 @@ def main():
     offre_text = import_pdf(args.offre)
     cv_text = import_pdf(args.cv)
 
-    result = keyword_match_score(offre_text, cv_text)
+    result = kw_match_score(offre_text, cv_text)
 
     print(f"Annonce   : {os.path.basename(args.offre)}")
     print(f"CV        : {os.path.basename(args.cv)}")

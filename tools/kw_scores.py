@@ -5,7 +5,7 @@ from LLMs.word_extractor.ml6team import infer_model
 
 nltk.download('stopwords', quiet=True)
 
-def keyword_match_score(offre: str, cv: str) -> dict:
+def kw_match_score(offre: str, cv: str) -> dict:
     stop_words = set(stopwords.words('french')) | set(stopwords.words('english'))
 
     def tokenize(text):
@@ -29,7 +29,7 @@ def keyword_match_score(offre: str, cv: str) -> dict:
     }
 
 
-def ml6_keyword_match_score(model, offre: str, cv: str) -> dict:
+def ml6_kw_match_score(model, offre: str, cv: str) -> dict:
     keywords_offre = set(kw.lower() for kw in infer_model(model, offre))
     keywords_cv = set(kw.lower() for kw in infer_model(model, cv))
 

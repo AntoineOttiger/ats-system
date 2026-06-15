@@ -5,7 +5,7 @@ import argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from LLMs.word_extractor.ml6team import import_model
-from tools.scores import ml6_keyword_match_score
+from tools.kw_scores import ml6_kw_match_score
 from tools.data_manager import import_pdf
 
 ANNOUNCEMENT_PATH = os.path.join(
@@ -15,7 +15,7 @@ CV_DIR = os.path.join(os.path.dirname(__file__), "..", "dataset", "cv", "ENGINEE
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Calcule le ml6_keyword_match_score de tous les CVs ENGINEERING.")
+    parser = argparse.ArgumentParser(description="Calcule le ml6_kw_match_score de tous les CVs ENGINEERING.")
     parser.add_argument("--limit", type=int, default=5, help="Nombre maximum de CVs à traiter (0 = tous)")
     args = parser.parse_args()
 
@@ -36,7 +36,7 @@ def main():
         print(f"Traitement CV {i}/{len(cv_files)} : {filename}")
         cv_path = os.path.join(CV_DIR, filename)
         cv_text = import_pdf(cv_path)
-        score = ml6_keyword_match_score(model, offre_text, cv_text)["score"]
+        score = ml6_kw_match_score(model, offre_text, cv_text)["score"]
         results.append((filename, score))
 
     results.sort(key=lambda x: x[1], reverse=True)

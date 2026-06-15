@@ -26,10 +26,14 @@ Fonctions utilitaires réutilisables.
 
 - `import_pdf(file_path: str) -> str` — Extrait et retourne le texte complet d'un fichier PDF (via `pypdf`).
 
-#### `tools/scores.py`
+#### `tools/kw_scores.py`
 
-- `keyword_match_score(offre: str, cv: str) -> dict` — Calcule la correspondance entre une offre et un CV en comparant les mots-clés (stopwords FR+EN supprimés). Retourne `{"score": float, "matching": set, "missing": set}`.
-- `ml6_keyword_match_score(model, offre: str, cv: str) -> dict` — Même interface que `keyword_match_score`, mais utilise le LLM ml6team pour extraire les keyphrases de l'offre et du CV. `model` doit être chargé au préalable via `import_model()`.
+- `kw_match_score(offre: str, cv: str) -> dict` — Calcule la correspondance entre une offre et un CV en comparant les mots-clés (stopwords FR+EN supprimés). Retourne `{"score": float, "matching": set, "missing": set}`.
+- `ml6_kw_match_score(model, offre: str, cv: str) -> dict` — Même interface que `kw_match_score`, mais utilise le LLM ml6team pour extraire les keyphrases de l'offre et du CV. `model` doit être chargé au préalable via `import_model()`.
+
+#### `tools/emb_scores.py`
+
+- `emb_cos_score(model: SentenceTransformer, offre: str, cv: str) -> float` — Calcule la similarité cosinus entre l'embedding de l'offre et celui du CV. Retourne un score en pourcentage (0–100). `model` doit être chargé au préalable via `SentenceTransformer("all-MiniLM-L6-v2")`.
 
 ### `LLMs/`
 
@@ -44,17 +48,19 @@ Modèles de langage pour l'extraction d'information.
 
 Scripts exécutables.
 
-- `scr/compute_keyword_match_scores.py` — Calcule le `keyword_match_score` de tous les CVs du dossier `ENGINEERING` contre l'annonce `mechanical_engineer_job_posting_2016.pdf`, et affiche les résultats triés du meilleur au plus bas score.
-- `scr/compute_ml6_keyword_match_scores.py` — Même logique avec `ml6_keyword_match_score`. Argument `--limit N` (défaut : 5) pour limiter le nombre de CVs traités ; `--limit 0` pour tous les traiter.
+- `scr/compute_kw_match_scores.py` — Calcule le `kw_match_score` de tous les CVs du dossier `ENGINEERING` contre l'annonce `mechanical_engineer_job_posting_2016.pdf`, et affiche les résultats triés du meilleur au plus bas score.
+- `scr/compute_ml6_kw_match_scores.py` — Même logique avec `ml6_kw_match_score`. Argument `--limit N` (défaut : 5) pour limiter le nombre de CVs traités ; `--limit 0` pour tous les traiter.
+- `scr/compute_emb_scores.py` — Même logique avec `emb_cos_score`. Argument `--limit N` (défaut : 5) pour limiter le nombre de CVs traités ; `--limit 0` pour tous les traiter.
 
 ### `test/`
 
 Scripts de test.
 
 - `test/test_import_pdf.py` — Teste la fonction `import_pdf`.
-- `test/test_keyword_match_score.py` — Teste `keyword_match_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
+- `test/test_kw_match_score.py` — Teste `kw_match_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
 - `test/test_ml6team_extractor.py` — Teste `import_model` et `infer_model` sur un CV ENGINEERING.
-- `test/test_ml6_keyword_match_score.py` — Teste `ml6_keyword_match_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
+- `test/test_ml6_kw_match_score.py` — Teste `ml6_kw_match_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
+- `test/test_emb_score.py` — Teste `emb_cos_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
 
 ### `ats_syst/`
 

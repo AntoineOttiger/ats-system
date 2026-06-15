@@ -8,26 +8,42 @@ Ce projet consiste à implémenter un système ATS (Applicant Tracking System).
 
 ### `dataset/`
 
-Contient les données du project :
+Contient les données du projet :
 
-- CV
-- Annonces d'emploi
-
-### `src/`
-
-Contient le code source du projet.
-
-### `test/`
-
-Contient les tests du projet.
+- `dataset/announcement/` — Annonces d'emploi au format PDF
+  - `mechanical_engineer_job_posting_2016.pdf` (seule annonce actuelle)
+- `dataset/cv/` — CVs au format PDF, organisés par catégorie métier :
+  ACCOUNTANT, ADVOCATE, AGRICULTURE, APPAREL, ARTS, AUTOMOBILE, AVIATION,
+  BANKING, BPO, BUSINESS-DEVELOPMENT, CHEF, CONSTRUCTION, CONSULTANT,
+  DESIGNER, DIGITAL-MEDIA, ENGINEERING, FINANCE, FITNESS, HEALTHCARE, HR,
+  INFORMATION-TECHNOLOGY, PUBLIC-RELATIONS, SALES, TEACHER
 
 ### `tools/`
 
-Contient les outils auxiliaires du projet.
+Fonctions utilitaires réutilisables.
+
+#### `tools/data_manager.py`
+- `import_pdf(file_path: str) -> str` — Extrait et retourne le texte complet d'un fichier PDF (via `pypdf`).
+
+#### `tools/scores.py`
+- `keyword_match_score(offre: str, cv: str) -> dict` — Calcule la correspondance entre une offre et un CV en comparant les mots-clés (stopwords FR+EN supprimés). Retourne `{"score": float, "matching": set, "missing": set}`.
+
+### `scr/`
+
+Scripts exécutables.
+
+- `scr/compute_keyword_match_scores.py` — Calcule le `keyword_match_score` de tous les CVs du dossier `ENGINEERING` contre l'annonce `mechanical_engineer_job_posting_2016.pdf`, et affiche les résultats triés du meilleur au plus bas score.
+
+### `test/`
+
+Scripts de test.
+
+- `test/test_import_pdf.py` — Teste la fonction `import_pdf`.
+- `test/test_keyword_match_score.py` — Teste `keyword_match_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
 
 ### `ats_syst/`
 
-Contient l'environnement virtuel du projet. Ne pas versionner.
+Environnement virtuel Python. Ne pas versionner.
 
 ### `notes/`
 

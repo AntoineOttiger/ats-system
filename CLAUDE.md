@@ -23,16 +23,20 @@ Contient les données du projet :
 Fonctions utilitaires réutilisables.
 
 #### `tools/data_manager.py`
+
 - `import_pdf(file_path: str) -> str` — Extrait et retourne le texte complet d'un fichier PDF (via `pypdf`).
 
 #### `tools/scores.py`
+
 - `keyword_match_score(offre: str, cv: str) -> dict` — Calcule la correspondance entre une offre et un CV en comparant les mots-clés (stopwords FR+EN supprimés). Retourne `{"score": float, "matching": set, "missing": set}`.
+- `ml6_keyword_match_score(model, offre: str, cv: str) -> dict` — Même interface que `keyword_match_score`, mais utilise le LLM ml6team pour extraire les keyphrases de l'offre et du CV. `model` doit être chargé au préalable via `import_model()`.
 
 ### `LLMs/`
 
 Modèles de langage pour l'extraction d'information.
 
 #### `LLMs/word_extractor/ml6team.py`
+
 - `import_model() -> pipeline` — Charge le modèle HuggingFace `ml6team/keyphrase-extraction-kbir-inspec` (token classification, basé sur BERT).
 - `infer_model(model, text: str) -> list[str]` — Extrait les keyphrases d'un texte. Découpe le texte en chunks de 400 mots pour respecter la limite de 512 tokens de BERT. Déduplique les résultats.
 
@@ -41,6 +45,7 @@ Modèles de langage pour l'extraction d'information.
 Scripts exécutables.
 
 - `scr/compute_keyword_match_scores.py` — Calcule le `keyword_match_score` de tous les CVs du dossier `ENGINEERING` contre l'annonce `mechanical_engineer_job_posting_2016.pdf`, et affiche les résultats triés du meilleur au plus bas score.
+- `scr/compute_ml6_keyword_match_scores.py` — Même logique avec `ml6_keyword_match_score`. Argument `--limit N` (défaut : 5) pour limiter le nombre de CVs traités ; `--limit 0` pour tous les traiter.
 
 ### `test/`
 
@@ -49,6 +54,7 @@ Scripts de test.
 - `test/test_import_pdf.py` — Teste la fonction `import_pdf`.
 - `test/test_keyword_match_score.py` — Teste `keyword_match_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
 - `test/test_ml6team_extractor.py` — Teste `import_model` et `infer_model` sur un CV ENGINEERING.
+- `test/test_ml6_keyword_match_score.py` — Teste `ml6_keyword_match_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
 
 ### `ats_syst/`
 

@@ -28,6 +28,14 @@ Fonctions utilitaires réutilisables.
 #### `tools/scores.py`
 - `keyword_match_score(offre: str, cv: str) -> dict` — Calcule la correspondance entre une offre et un CV en comparant les mots-clés (stopwords FR+EN supprimés). Retourne `{"score": float, "matching": set, "missing": set}`.
 
+### `LLMs/`
+
+Modèles de langage pour l'extraction d'information.
+
+#### `LLMs/word_extractor/ml6team.py`
+- `import_model() -> pipeline` — Charge le modèle HuggingFace `ml6team/keyphrase-extraction-kbir-inspec` (token classification, basé sur BERT).
+- `infer_model(model, text: str) -> list[str]` — Extrait les keyphrases d'un texte. Découpe le texte en chunks de 400 mots pour respecter la limite de 512 tokens de BERT. Déduplique les résultats.
+
 ### `scr/`
 
 Scripts exécutables.
@@ -40,6 +48,7 @@ Scripts de test.
 
 - `test/test_import_pdf.py` — Teste la fonction `import_pdf`.
 - `test/test_keyword_match_score.py` — Teste `keyword_match_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
+- `test/test_ml6team_extractor.py` — Teste `import_model` et `infer_model` sur un CV ENGINEERING.
 
 ### `ats_syst/`
 

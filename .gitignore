@@ -9,6 +9,9 @@ data/
 # Notes personnelles
 notes/
 
+# Secrets (clé API Anthropic, etc.)
+.env
+
 # Python
 __pycache__/
 *.py[cod]

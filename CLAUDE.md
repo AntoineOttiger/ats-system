@@ -1,91 +1,77 @@
 # Projet : ats-system
 
-## Description
+Système ATS (Applicant Tracking System) : scoring/classement de CVs (PDF) face à
+une offre d'emploi, via trois approches comparées — mots-clés, embeddings, et un
+LLM (Claude) en fenêtre glissante.
 
-Ce projet consiste à implémenter un système ATS (Applicant Tracking System).
+## Développement
 
-Le projet suit un **layout `src/`** : `ats_system` est le seul package importable.
-Il est installé en mode éditable (`pip install -e ".[dev]"`), donc les imports
-se font en absolu (`from ats_system... import ...`) depuis les scripts et les tests.
+- **Layout `src/`** : `ats_system` est le seul package importable. Installé en
+  éditable, donc les imports sont **absolus** partout (`from ats_system… import …`),
+  y compris dans `scripts/` et `tests/`.
+- **Python** ≥ 3.10.
+- **Installation** : `pip install -e ".[dev]"`
+- **Tests** : `pytest`. ⚠️ Seul `tests/test_import_pdf.py` est un vrai test pytest
+  (fonctions `test_*` + `assert`). Les autres fichiers de `tests/` sont en fait des
+  **scripts CLI exploratoires** (`argparse` + `main()`, lancés via
+  `python tests/<nom>.py`), non collectés par pytest.
+- **Lint / format** : `ruff` (`line-length = 120`, `src = ["src", "scripts", "tests"]`).
+- **Secrets** : copier `.env.example` → `.env` (ignoré par git) et renseigner
+  `ANTHROPIC_API_KEY` (requis pour `SlidingWindowCVRanker`). Chargé via `python-dotenv`.
 
-## Structure du projet
+## Conventions
 
-### `pyproject.toml`
+- Commentaires et docstrings en **français**.
+- Type hints sur les signatures publiques.
+- Constantes de chemins centralisées dans `config.py` — ne pas coder de chemins en dur.
+- Chargement des modèles (HF, embeddings, Anthropic) volontairement séparé de
+  l'inférence (`import_model()` puis `infer_model()` / fonctions de scoring) ; le
+  chargement est coûteux (modèles HF) ou facturé (Claude).
 
-Dépendances, packaging (setuptools, layout `src/`) et configuration des outils
-(`pytest`, `ruff`).
+## Cartographie
 
-### `src/ats_system/` — le package importable
+> Les signatures détaillées vivent dans le code — voici les responsabilités et les
+> points d'entrée publics.
 
-#### `config.py`
+### `src/ats_system/`
 
-Chemins et constantes centralisés (basés sur `pathlib.Path`) :
+- **`config.py`** — chemins et constantes (`PROJECT_ROOT`, `DATA_DIR`,
+  `ANNOUNCEMENTS_DIR`, `CV_DIR`, `DEFAULT_ANNOUNCEMENT`,
+  `DEFAULT_CV_CATEGORY` = `"ENGINEERING"`, `DEFAULT_CV`).
+- **`data/pdf_loader.py`** — `import_pdf()` : PDF → `{"id", "content"}` (via `pypdf`).
+  Réexporté par `ats_system.data`.
+- **`scoring/`** (réexporté par `ats_system.scoring`) :
+  - `keyword.py` — `baseline_extract_keywords()` (regex + stopwords FR/EN),
+    `ml6_extract_keywords()` (via le modèle ml6team), `match_score()`
+    (intersection offre/CV → `{"score", "matching", "missing"}`).
+  - `embedding.py` — `emb_cos_score()` : similarité cosinus offre/CV (0–100).
+- **`models/`** (wrappers de modèles) :
+  - `keyphrase_extractor.py` — modèle HF `ml6team/keyphrase-extraction-kbir-inspec`
+    (BERT, token classification ; chunks de 400 mots pour la limite 512 tokens).
+  - `embedding_model.py` — `SentenceTransformer` `all-MiniLM-L6-v2`.
+  - `sliding_window_ranker.py` — `SlidingWindowCVRanker` : classement par fenêtre
+    glissante (inspiré de RankGPT) via Claude (`claude-opus-4-8`, SDK `anthropic`).
+    Entrées : `import_model()`, `load_cvs()`, `run_sliding_window_ranking()` →
+    `RankingResult`, `display_results()`.
 
-- `PROJECT_ROOT`, `DATA_DIR`, `ANNOUNCEMENTS_DIR`, `CV_DIR`
-- `DEFAULT_ANNOUNCEMENT` — `mechanical_engineer_job_posting_2016.pdf`
-- `DEFAULT_CV_CATEGORY` (`"ENGINEERING"`), `DEFAULT_CV`
+### `scripts/` — points d'entrée (`python scripts/<nom>.py`)
 
-#### `data/` — I/O
+Comparent les approches de scoring sur les CVs `ENGINEERING` vs l'annonce par défaut
+(arg `--limit N`, défaut 5 ; `0` = tous) :
 
-- `data/pdf_loader.py` → `import_pdf(file_path: str) -> dict` — Extrait un fichier PDF (via `pypdf`) et le retourne sous la forme `{"id": nom_du_fichier, "content": texte}`. Réexporté par `ats_system.data`.
-
-#### `scoring/` — logique de scoring
-
-- `scoring/keyword.py`
-
-  - `baseline_extract_keywords(text: str) -> set` — Extrait les mots-clés d'un texte (mise en minuscules, suppression de la ponctuation/chiffres, stopwords FR+EN supprimés, mots de ≤ 2 caractères ignorés).
-  - `ml6_extract_keywords(model, text: str) -> set` — Extrait les keyphrases d'un texte via le LLM ml6team. `model` doit être chargé via `keyphrase_extractor.import_model()`.
-  - `match_score(keywords_offre: set, keywords_cv: set) -> dict` — Calcule la correspondance entre deux ensembles de mots-clés (offre vs CV). Retourne `{"score": float, "matching": set, "missing": set}`.
-- `scoring/embedding.py`
-
-  - `emb_cos_score(model: SentenceTransformer, offre: str, cv: str) -> float` — Similarité cosinus entre l'embedding de l'offre et celui du CV (score 0–100). `model` chargé via `embedding_model.import_model()`.
-
-  Ces fonctions sont réexportées par `ats_system.scoring`.
-
-#### `models/` — wrappers LLM
-
-- `models/keyphrase_extractor.py`
-  - `import_model() -> pipeline` — Charge le modèle HuggingFace `ml6team/keyphrase-extraction-kbir-inspec` (token classification, basé sur BERT).
-  - `infer_model(model, text: str) -> list[str]` — Extrait les keyphrases d'un texte. Découpe en chunks de 400 mots (limite 512 tokens de BERT). Déduplique.
-- `models/embedding_model.py`
-  - `import_model() -> SentenceTransformer` — Charge le modèle d'embeddings `all-MiniLM-L6-v2`.
-
-### `scripts/` — points d'entrée exécutables
-
-Lancés via `python scripts/<nom>.py` (le package étant installé en éditable).
-
-- `scripts/compute_kw_match_scores.py` — Calcule le score keyword baseline (`baseline_extract_keywords` + `match_score`) de tous les CVs `ENGINEERING` contre l'annonce par défaut, et affiche les résultats triés du meilleur au plus bas score.
-- `scripts/compute_ml6_kw_match_scores.py` — Même logique avec `ml6_extract_keywords` + `match_score`. Argument `--limit N` (défaut : 5 ; `0` = tous).
-- `scripts/compute_emb_scores.py` — Même logique avec `emb_cos_score`. Argument `--limit N` (défaut : 5 ; `0` = tous).
-- `scripts/count_tokens.py` — Compte le nombre de tokens d'un document PDF (tokenizer BERT `ml6team`). Arguments `--doc` (défaut : `DEFAULT_CV`) et `--model`. Affiche mots, tokens et nombre de chunks de 512 tokens nécessaires.
-- `scripts/count_tokens_stats.py` — Calcule moyenne, écart type, min et max du nombre de tokens de tous les CVs du dossier `DEFAULT_CV_CATEGORY`. Arguments `--limit N` (défaut : 0 = tous) et `--model`.
-
-### `notebooks/`
-
-Notebooks Jupyter d'exploration.
-
-### `tests/`
-
-- `tests/test_import_pdf.py` — Teste `import_pdf` (assertions pytest).
-- `tests/test_kw_match_score.py` — Teste `baseline_extract_keywords` + `match_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
-- `tests/test_ml6team_extractor.py` — Teste `import_model` et `infer_model` sur un CV ENGINEERING.
-- `tests/test_ml6_kw_match_score.py` — Teste `ml6_extract_keywords` + `match_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
-- `tests/test_emb_score.py` — Teste `emb_cos_score` entre l'annonce et un CV (paramétrable via `--offre` et `--cv`).
+- `compute_kw_match_scores.py` — baseline mots-clés.
+- `compute_ml6_kw_match_scores.py` — mots-clés ml6team.
+- `compute_emb_scores.py` — embeddings.
+- `compute_sliding_window_ranking.py` — classement Claude (`--window-size`, `--passes` ;
+  nécessite `ANTHROPIC_API_KEY`).
+- `count_tokens.py` / `count_tokens_stats.py` — statistiques de tokens (tokenizer ml6team).
 
 ### `data/` — données (non versionné)
 
-- `data/announcements/` — Annonces d'emploi au format PDF
-  - `mechanical_engineer_job_posting_2016.pdf` (seule annonce actuelle)
-- `data/cv/` — CVs au format PDF, organisés par catégorie métier :
-  ACCOUNTANT, ADVOCATE, AGRICULTURE, APPAREL, ARTS, AUTOMOBILE, AVIATION,
-  BANKING, BPO, BUSINESS-DEVELOPMENT, CHEF, CONSTRUCTION, CONSULTANT,
-  DESIGNER, DIGITAL-MEDIA, ENGINEERING, FINANCE, FITNESS, HEALTHCARE, HR,
-  INFORMATION-TECHNOLOGY, PUBLIC-RELATIONS, SALES, TEACHER
+- `data/announcements/` — annonces PDF (actuellement `mechanical_engineer_job_posting_2016.pdf`).
+- `data/cv/<CATÉGORIE>/` — CVs PDF par métier (ACCOUNTANT, …, ENGINEERING, …, TEACHER).
 
-### `ats_syst/`
+## Garde-fous
 
-Environnement virtuel Python. Ne pas versionner.
-
-### `notes/`
-
-> ⚠️ **Ne pas modifier.** Ce dossier contient les notes personnelles de l'utilisateur. Aucune lecture, modification ou suppression ne doit être effectuée sur son contenu.
+- **`notes/`** — ⚠️ notes personnelles de l'utilisateur. **Ne pas lire, modifier ou supprimer.**
+- **`ats_syst/`** — environnement virtuel. Ne pas versionner.

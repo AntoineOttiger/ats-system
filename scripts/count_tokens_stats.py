@@ -30,7 +30,7 @@ def main():
 
     token_counts = []
     for i, cv_path in enumerate(cv_files, 1):
-        text = import_pdf(str(cv_path))
+        text = import_pdf(str(cv_path))["content"]
         n_tokens = len(tokenizer.encode(text, add_special_tokens=False))
         token_counts.append(n_tokens)
         print(f"Traitement CV {i}/{len(cv_files)} : {cv_path.name} ({n_tokens} tokens)")

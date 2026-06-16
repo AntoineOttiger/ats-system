@@ -19,8 +19,8 @@ def main():
     model = import_model()
 
     print("Extraction du texte de l'annonce...")
-    offre_text = import_pdf(str(DEFAULT_ANNOUNCEMENT))
-    keywords_offre = ml6_extract_keywords(model, offre_text)
+    offre = import_pdf(str(DEFAULT_ANNOUNCEMENT))
+    keywords_offre = ml6_extract_keywords(model, offre["content"])
 
     cv_files = sorted(CATEGORY_DIR.glob("*.pdf"))
     if limit is not None:
@@ -29,10 +29,10 @@ def main():
     results = []
     for i, cv_path in enumerate(cv_files, 1):
         print(f"Traitement CV {i}/{len(cv_files)} : {cv_path.name}")
-        cv_text = import_pdf(str(cv_path))
-        keywords_cv = ml6_extract_keywords(model, cv_text)
+        cv = import_pdf(str(cv_path))
+        keywords_cv = ml6_extract_keywords(model, cv["content"])
         score = match_score(keywords_offre, keywords_cv)["score"]
-        results.append((cv_path.name, score))
+        results.append((cv["id"], score))
 
     results.sort(key=lambda x: x[1], reverse=True)
 

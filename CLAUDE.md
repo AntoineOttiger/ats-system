@@ -27,7 +27,7 @@ Chemins et constantes centralisés (basés sur `pathlib.Path`) :
 
 #### `data/` — I/O
 
-- `data/pdf_loader.py` → `import_pdf(file_path: str) -> str` — Extrait et retourne le texte complet d'un fichier PDF (via `pypdf`). Réexporté par `ats_system.data`.
+- `data/pdf_loader.py` → `import_pdf(file_path: str) -> dict` — Extrait un fichier PDF (via `pypdf`) et le retourne sous la forme `{"id": nom_du_fichier, "content": texte}`. Réexporté par `ats_system.data`.
 
 #### `scoring/` — logique de scoring
 

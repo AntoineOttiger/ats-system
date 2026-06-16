@@ -16,8 +16,8 @@ def main():
     model = import_model()
 
     print("Extraction du texte...")
-    offre_text = import_pdf(args.offre)
-    cv_text = import_pdf(args.cv)
+    offre_text = import_pdf(args.offre)["content"]
+    cv_text = import_pdf(args.cv)["content"]
 
     print("Calcul du score...")
     score = emb_cos_score(model, offre_text, cv_text)

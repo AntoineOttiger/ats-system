@@ -19,7 +19,7 @@ def main():
     model = import_model()
 
     print("Extraction du texte de l'annonce...")
-    offre_text = import_pdf(str(DEFAULT_ANNOUNCEMENT))
+    offre = import_pdf(str(DEFAULT_ANNOUNCEMENT))
 
     cv_files = sorted(CATEGORY_DIR.glob("*.pdf"))
     if limit is not None:
@@ -28,9 +28,9 @@ def main():
     results = []
     for i, cv_path in enumerate(cv_files, 1):
         print(f"Traitement CV {i}/{len(cv_files)} : {cv_path.name}")
-        cv_text = import_pdf(str(cv_path))
-        score = emb_cos_score(model, offre_text, cv_text)
-        results.append((cv_path.name, score))
+        cv = import_pdf(str(cv_path))
+        score = emb_cos_score(model, offre["content"], cv["content"])
+        results.append((cv["id"], score))
 
     results.sort(key=lambda x: x[1], reverse=True)
 

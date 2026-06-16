@@ -10,7 +10,7 @@ if __name__ == "__main__":
     model = import_model()
 
     print("Extraction du texte du CV...")
-    cv_text = import_pdf(str(CV_PATH))
+    cv_text = import_pdf(str(CV_PATH))["content"]
 
     print("Inférence...")
     keywords = infer_model(model, cv_text)

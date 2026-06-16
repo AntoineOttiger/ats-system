@@ -11,8 +11,8 @@ def main():
     parser.add_argument("--cv", default=str(DEFAULT_CV), help="Chemin vers le PDF du CV")
     args = parser.parse_args()
 
-    offre_text = import_pdf(args.offre)
-    cv_text = import_pdf(args.cv)
+    offre_text = import_pdf(args.offre)["content"]
+    cv_text = import_pdf(args.cv)["content"]
 
     keywords_offre = baseline_extract_keywords(offre_text)
     keywords_cv = baseline_extract_keywords(cv_text)

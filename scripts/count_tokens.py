@@ -19,7 +19,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 
     print("Extraction du texte...")
-    text = import_pdf(args.doc)
+    text = import_pdf(args.doc)["content"]
 
     n_words = len(text.split())
     n_tokens = len(tokenizer.encode(text, add_special_tokens=False))

@@ -20,6 +20,8 @@ dependencies = [
 dev = [
     "pytest",
     "ruff",
+    "matplotlib",
+    "ipykernel",
 ]
 
 [tool.setuptools.packages.find]

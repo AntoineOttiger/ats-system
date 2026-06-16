@@ -3,7 +3,7 @@ import argparse
 from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY
 from ats_system.data import import_pdf
 from ats_system.models.keyphrase_extractor import import_model
-from ats_system.scoring import ml6_kw_match_score
+from ats_system.scoring import ml6_extract_keywords, match_score
 
 CATEGORY_DIR = CV_DIR / DEFAULT_CV_CATEGORY
 
@@ -20,6 +20,7 @@ def main():
 
     print("Extraction du texte de l'annonce...")
     offre_text = import_pdf(str(DEFAULT_ANNOUNCEMENT))
+    keywords_offre = ml6_extract_keywords(model, offre_text)
 
     cv_files = sorted(CATEGORY_DIR.glob("*.pdf"))
     if limit is not None:
@@ -29,7 +30,8 @@ def main():
     for i, cv_path in enumerate(cv_files, 1):
         print(f"Traitement CV {i}/{len(cv_files)} : {cv_path.name}")
         cv_text = import_pdf(str(cv_path))
-        score = ml6_kw_match_score(model, offre_text, cv_text)["score"]
+        keywords_cv = ml6_extract_keywords(model, cv_text)
+        score = match_score(keywords_offre, keywords_cv)["score"]
         results.append((cv_path.name, score))
 
     results.sort(key=lambda x: x[1], reverse=True)

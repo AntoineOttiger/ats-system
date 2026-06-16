@@ -2,7 +2,7 @@ import argparse
 
 from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV
 from ats_system.data import import_pdf
-from ats_system.scoring import kw_match_score
+from ats_system.scoring import baseline_extract_keywords, match_score
 
 
 def main():
@@ -14,7 +14,9 @@ def main():
     offre_text = import_pdf(args.offre)
     cv_text = import_pdf(args.cv)
 
-    result = kw_match_score(offre_text, cv_text)
+    keywords_offre = baseline_extract_keywords(offre_text)
+    keywords_cv = baseline_extract_keywords(cv_text)
+    result = match_score(keywords_offre, keywords_cv)
 
     print(f"Annonce   : {args.offre}")
     print(f"CV        : {args.cv}")

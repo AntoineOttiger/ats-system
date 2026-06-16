@@ -10,6 +10,9 @@ DATA_DIR = PROJECT_ROOT / "data"
 ANNOUNCEMENTS_DIR = DATA_DIR / "announcements"
 CV_DIR = DATA_DIR / "cv"
 
+# Sorties des scripts (résultats de classement, scores, etc.)
+RESULTS_DIR = PROJECT_ROOT / "results"
+
 # Valeurs par défaut utilisées par les scripts et les tests
 DEFAULT_ANNOUNCEMENT = ANNOUNCEMENTS_DIR / "mechanical_engineer_job_posting_2016.pdf"
 DEFAULT_CV_CATEGORY = "ENGINEERING"

@@ -6,6 +6,9 @@ venv/
 # Données (non versionnées)
 data/
 
+# Sorties des scripts (résultats de classement, non versionnées)
+results/
+
 # Notes personnelles
 notes/
 

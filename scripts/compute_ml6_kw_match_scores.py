@@ -3,6 +3,7 @@ import argparse
 from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY
 from ats_system.data import import_pdf
 from ats_system.models.keyphrase_extractor import import_model
+from ats_system.results_io import build_ranking, save_results
 from ats_system.scoring import ml6_extract_keywords, match_score
 
 CATEGORY_DIR = CV_DIR / DEFAULT_CV_CATEGORY
@@ -39,6 +40,16 @@ def main():
     print()
     for filename, score in results:
         print(f"{score:5.1f}%  {filename}")
+
+    params = {
+        "announcement": DEFAULT_ANNOUNCEMENT.name,
+        "category": DEFAULT_CV_CATEGORY,
+        "model": "ml6team/keyphrase-extraction-kbir-inspec",
+        "limit": args.limit,
+        "num_cvs": len(results),
+    }
+    out_path = save_results("ml6_keyword_match", build_ranking(results), params)
+    print(f"\nRésultats sauvegardés dans : {out_path}")
 
 
 if __name__ == "__main__":

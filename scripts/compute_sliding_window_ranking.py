@@ -1,48 +1,11 @@
 import argparse
-import json
-from datetime import datetime
-from pathlib import Path
 
-from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY, RESULTS_DIR
+from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY
 from ats_system.data import import_pdf
-from ats_system.models.sliding_window_ranker import RankingResult, SlidingWindowCVRanker
+from ats_system.models.sliding_window_ranker import SlidingWindowCVRanker
+from ats_system.results_io import build_ranking, save_results
 
 CATEGORY_DIR = CV_DIR / DEFAULT_CV_CATEGORY
-
-
-def save_results(result: RankingResult, params: dict) -> Path:
-    """Sauvegarde le classement dans un JSON horodaté (jamais écrasé).
-
-    Le nom inclut un timestamp à la seconde ; un suffixe incrémental est ajouté
-    en cas de collision improbable, garantissant qu'aucun run n'en écrase un autre.
-    """
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    out_path = RESULTS_DIR / f"sliding_window_ranking_{stamp}.json"
-    counter = 1
-    while out_path.exists():
-        out_path = RESULTS_DIR / f"sliding_window_ranking_{stamp}_{counter}.json"
-        counter += 1
-
-    payload = {
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "params": params,
-        "passes": result.passes,
-        "converged": result.converged,
-        "ranking": [
-            {
-                "rank": rank,
-                "cv_id": cv.id,
-                "score": result.scores[cv.id],
-                "justification": result.justifications.get(cv.id, ""),
-            }
-            for rank, cv in enumerate(result.ranked_cvs, 1)
-        ],
-    }
-
-    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return out_path
 
 
 def main():
@@ -84,7 +47,14 @@ def main():
         "passes": args.passes,
         "num_cvs": len(cvs),
     }
-    out_path = save_results(result, params)
+    scored = [(cv.id, result.scores[cv.id]) for cv in result.ranked_cvs]
+    ranking = build_ranking(scored, result.justifications)
+    out_path = save_results(
+        "sliding_window_ranking",
+        ranking,
+        params,
+        extra={"passes": result.passes, "converged": result.converged},
+    )
     print(f"\nRésultats sauvegardés dans : {out_path}")
 
 

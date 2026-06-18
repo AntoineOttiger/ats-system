@@ -78,6 +78,7 @@ def main():
     params = {
         "announcement": DEFAULT_ANNOUNCEMENT.name,
         "category": DEFAULT_CV_CATEGORY,
+        "model": ranker.model,
         "limit": args.limit,
         "window_size": args.window_size,
         "passes": args.passes,

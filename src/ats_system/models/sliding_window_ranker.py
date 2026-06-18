@@ -16,6 +16,8 @@ from typing import Optional
 import anthropic
 from dotenv import load_dotenv
 
+from ats_system.config import SLIDING_WINDOW_MODEL
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,8 +56,6 @@ class SlidingWindowCVRanker:
       5. Répéter pendant ``num_passes`` passes (ou jusqu'à convergence).
     """
 
-    MODEL = "claude-opus-4-8"
-
     def __init__(
         self,
         window_size: int = 4,
@@ -63,6 +63,7 @@ class SlidingWindowCVRanker:
         num_passes: int = 3,
         max_tokens: int = 4096,
         api_key: Optional[str] = None,
+        model: str = SLIDING_WINDOW_MODEL,
     ):
         """
         Args:
@@ -72,11 +73,14 @@ class SlidingWindowCVRanker:
             max_tokens:  Nombre maximum de tokens par réponse du LLM.
             api_key:     Clé API Anthropic. À défaut, la variable d'environnement
                          ``ANTHROPIC_API_KEY`` (chargée depuis ``.env``) est utilisée.
+            model:       Identifiant du modèle Claude à utiliser. Défaut :
+                         ``SLIDING_WINDOW_MODEL`` (défini dans ``config.py``).
         """
         self.window_size = window_size
         self.step_size = step_size if step_size is not None else max(1, window_size // 2)
         self.num_passes = num_passes
         self.max_tokens = max_tokens
+        self.model = model
         self._api_key = api_key
         self.client: Optional[anthropic.Anthropic] = None
 
@@ -98,7 +102,7 @@ class SlidingWindowCVRanker:
                 "(voir .env.example) ou passez api_key=."
             )
         self.client = anthropic.Anthropic(api_key=key)
-        logger.info("Client Anthropic initialisé (modèle : %s)", self.MODEL)
+        logger.info("Client Anthropic initialisé (modèle : %s)", self.model)
 
     def load_cvs(self, cvs: list[dict]) -> list[CV]:
         """Convertit des dicts bruts en objets CV.
@@ -218,10 +222,12 @@ class SlidingWindowCVRanker:
         """
         prompt = self._build_prompt(job_offer, window)
 
+        # Pas de thinking : le reclassement de fenêtre n'en a pas besoin, et cela
+        # garde l'appel compatible avec tous les modèles (Haiku 4.5 ne supporte pas
+        # le thinking adaptatif) tout en réduisant les tokens facturés.
         response = self.client.messages.create(
-            model=self.MODEL,
+            model=self.model,
             max_tokens=self.max_tokens,
-            thinking={"type": "adaptive"},
             messages=[{"role": "user", "content": prompt}],
         )
 

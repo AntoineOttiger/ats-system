@@ -17,3 +17,6 @@ RESULTS_DIR = PROJECT_ROOT / "results"
 DEFAULT_ANNOUNCEMENT = ANNOUNCEMENTS_DIR / "mechanical_engineer_job_posting_2016.pdf"
 DEFAULT_CV_CATEGORY = "ENGINEERING"
 DEFAULT_CV = CV_DIR / DEFAULT_CV_CATEGORY / "12472574.pdf"
+
+# Modèle Claude utilisé par le SlidingWindowCVRanker (classement par fenêtre glissante)
+SLIDING_WINDOW_MODEL = "claude-haiku-4-5"

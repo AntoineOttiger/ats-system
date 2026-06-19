@@ -15,44 +15,42 @@ from datetime import datetime
 
 from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY, RESULTS_DIR
 from ats_system.data import import_pdf
-from ats_system.models import embedding_model, keyphrase_extractor
-from ats_system.models.sliding_window_ranker import SlidingWindowCVRanker
 from ats_system.results_io import build_ranking, save_results
-from ats_system.scoring import (
-    baseline_extract_keywords,
-    emb_cos_score,
-    match_score,
-    ml6_extract_keywords,
+from ats_system.systems import (
+    BaselineKeywordMatcher,
+    EmbeddingCosineScorer,
+    Ml6KeywordMatcher,
+    SlidingWindowCVRanker,
 )
 
 CATEGORY_DIR = CV_DIR / DEFAULT_CV_CATEGORY
 
 
-def rank_baseline(offre_text: str, cvs: list[dict]) -> list[tuple[str, float]]:
+def rank_baseline(matcher: BaselineKeywordMatcher, offre_text: str, cvs: list[dict]) -> list[tuple[str, float]]:
     """Classement par mots-clés baseline ; retourne (cv_id, score) trié décroissant."""
-    keywords_offre = baseline_extract_keywords(offre_text)
+    keywords_offre = matcher.extract_keywords(offre_text)
     scored = [
-        (cv["id"], match_score(keywords_offre, baseline_extract_keywords(cv["content"]))["score"])
+        (cv["id"], matcher.match(keywords_offre, matcher.extract_keywords(cv["content"]))["score"])
         for cv in cvs
     ]
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored
 
 
-def rank_ml6(model, offre_text: str, cvs: list[dict]) -> list[tuple[str, float]]:
+def rank_ml6(matcher: Ml6KeywordMatcher, offre_text: str, cvs: list[dict]) -> list[tuple[str, float]]:
     """Classement par mots-clés ml6team ; retourne (cv_id, score) trié décroissant."""
-    keywords_offre = ml6_extract_keywords(model, offre_text)
+    keywords_offre = matcher.extract_keywords(offre_text)
     scored = [
-        (cv["id"], match_score(keywords_offre, ml6_extract_keywords(model, cv["content"]))["score"])
+        (cv["id"], matcher.match(keywords_offre, matcher.extract_keywords(cv["content"]))["score"])
         for cv in cvs
     ]
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored
 
 
-def rank_embedding(model, offre_text: str, cvs: list[dict]) -> list[tuple[str, float]]:
+def rank_embedding(scorer: EmbeddingCosineScorer, offre_text: str, cvs: list[dict]) -> list[tuple[str, float]]:
     """Classement par similarité cosinus ; retourne (cv_id, score) trié décroissant."""
-    scored = [(cv["id"], emb_cos_score(model, offre_text, cv["content"])) for cv in cvs]
+    scored = [(cv["id"], scorer.score(offre_text, cv["content"])) for cv in cvs]
     scored.sort(key=lambda x: x[1], reverse=True)
     return scored
 
@@ -92,22 +90,26 @@ def main():
 
     # --- 1. Mots-clés baseline ---
     print("\n[1/4] Mots-clés baseline...")
-    scored = rank_baseline(offre_text, cvs)
+    baseline_matcher = BaselineKeywordMatcher()
+    baseline_matcher.import_model()
+    scored = rank_baseline(baseline_matcher, offre_text, cvs)
     out = save_results("baseline_keyword_match", build_ranking(scored), dict(base_params), results_dir=run_dir)
     print(f"  -> {out}")
 
     # --- 2. Mots-clés ml6team ---
     print("\n[2/4] Mots-clés ml6team (chargement du modèle)...")
-    ml6_model = keyphrase_extractor.import_model()
-    scored = rank_ml6(ml6_model, offre_text, cvs)
+    ml6_matcher = Ml6KeywordMatcher()
+    ml6_matcher.import_model()
+    scored = rank_ml6(ml6_matcher, offre_text, cvs)
     params = {**base_params, "model": "ml6team/keyphrase-extraction-kbir-inspec"}
     out = save_results("ml6_keyword_match", build_ranking(scored), params, results_dir=run_dir)
     print(f"  -> {out}")
 
     # --- 3. Embeddings ---
     print("\n[3/4] Embeddings (chargement du modèle)...")
-    emb_model = embedding_model.import_model()
-    scored = rank_embedding(emb_model, offre_text, cvs)
+    emb_scorer = EmbeddingCosineScorer()
+    emb_scorer.import_model()
+    scored = rank_embedding(emb_scorer, offre_text, cvs)
     params = {**base_params, "model": "all-MiniLM-L6-v2"}
     out = save_results("embedding_cosine", build_ranking(scored), params, results_dir=run_dir)
     print(f"  -> {out}")

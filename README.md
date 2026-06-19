@@ -20,8 +20,9 @@ La méthode par fenêtre glissante (Claude) nécessite une clé API : copier
 src/ats_system/      # package importable
   config.py          # chemins & constantes centralisés
   data/              # I/O (chargement PDF)
-  scoring/           # logique de scoring (keyword, embedding)
-  models/            # wrappers de modèles (keyphrase_extractor, embedding_model, sliding_window_ranker)
+  systems/           # systèmes ATS, une classe par fichier (baseline_keyword_match,
+                     #   ml6_keyword_match, embedding_cosine, sliding_window_ranker)
+  generators/        # génération de données synthétiques (synthetic_cv_generator)
   results_io.py      # schéma commun & sauvegarde JSON des classements
 scripts/             # points d'entrée exécutables
 notebooks/           # notebooks Jupyter d'exploration

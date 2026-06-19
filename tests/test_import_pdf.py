@@ -1,7 +1,7 @@
-from ats_system.config import CV_DIR
+from ats_system.config import GENERATED_DATA_DIR
 from ats_system.data import import_pdf
 
-PDF_PATH = CV_DIR / "ACCOUNTANT" / "10554236.pdf"
+PDF_PATH = GENERATED_DATA_DIR / "synthetic_cvs_20260619-165443" / "cv_009_to_optimize.pdf"
 
 
 def test_import_pdf_returns_dict():

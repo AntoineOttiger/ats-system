@@ -2,7 +2,7 @@ import argparse
 
 from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY
 from ats_system.data import import_pdf
-from ats_system.models.sliding_window_ranker import SlidingWindowCVRanker
+from ats_system.systems import SlidingWindowCVRanker
 from ats_system.results_io import build_ranking, save_results
 
 CATEGORY_DIR = CV_DIR / DEFAULT_CV_CATEGORY

@@ -2,9 +2,8 @@ import argparse
 
 from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY
 from ats_system.data import import_pdf
-from ats_system.models.keyphrase_extractor import import_model
 from ats_system.results_io import build_ranking, save_results
-from ats_system.scoring import ml6_extract_keywords, match_score
+from ats_system.systems import Ml6KeywordMatcher
 
 CATEGORY_DIR = CV_DIR / DEFAULT_CV_CATEGORY
 
@@ -17,11 +16,12 @@ def main():
     limit = args.limit if args.limit > 0 else None
 
     print("Chargement du modèle...")
-    model = import_model()
+    matcher = Ml6KeywordMatcher()
+    matcher.import_model()
 
     print("Extraction du texte de l'annonce...")
     offre = import_pdf(str(DEFAULT_ANNOUNCEMENT))
-    keywords_offre = ml6_extract_keywords(model, offre["content"])
+    keywords_offre = matcher.extract_keywords(offre["content"])
 
     cv_files = sorted(CATEGORY_DIR.glob("*.pdf"))
     if limit is not None:
@@ -31,8 +31,8 @@ def main():
     for i, cv_path in enumerate(cv_files, 1):
         print(f"Traitement CV {i}/{len(cv_files)} : {cv_path.name}")
         cv = import_pdf(str(cv_path))
-        keywords_cv = ml6_extract_keywords(model, cv["content"])
-        score = match_score(keywords_offre, keywords_cv)["score"]
+        keywords_cv = matcher.extract_keywords(cv["content"])
+        score = matcher.match(keywords_offre, keywords_cv)["score"]
         results.append((cv["id"], score))
 
     results.sort(key=lambda x: x[1], reverse=True)

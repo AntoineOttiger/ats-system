@@ -2,8 +2,7 @@ import argparse
 
 from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV
 from ats_system.data import import_pdf
-from ats_system.models.embedding_model import import_model
-from ats_system.scoring import emb_cos_score
+from ats_system.systems import EmbeddingCosineScorer
 
 
 def main():
@@ -13,14 +12,15 @@ def main():
     args = parser.parse_args()
 
     print("Chargement du modèle...")
-    model = import_model()
+    scorer = EmbeddingCosineScorer()
+    scorer.import_model()
 
     print("Extraction du texte...")
     offre_text = import_pdf(args.offre)["content"]
     cv_text = import_pdf(args.cv)["content"]
 
     print("Calcul du score...")
-    score = emb_cos_score(model, offre_text, cv_text)
+    score = scorer.score(offre_text, cv_text)
 
     print(f"\nAnnonce : {args.offre}")
     print(f"CV      : {args.cv}")

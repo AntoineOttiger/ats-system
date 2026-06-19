@@ -2,9 +2,8 @@ import argparse
 
 from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY
 from ats_system.data import import_pdf
-from ats_system.models.embedding_model import import_model
 from ats_system.results_io import build_ranking, save_results
-from ats_system.scoring import emb_cos_score
+from ats_system.systems import EmbeddingCosineScorer
 
 CATEGORY_DIR = CV_DIR / DEFAULT_CV_CATEGORY
 
@@ -17,7 +16,8 @@ def main():
     limit = args.limit if args.limit > 0 else None
 
     print("Chargement du modèle...")
-    model = import_model()
+    scorer = EmbeddingCosineScorer()
+    scorer.import_model()
 
     print("Extraction du texte de l'annonce...")
     offre = import_pdf(str(DEFAULT_ANNOUNCEMENT))
@@ -30,7 +30,7 @@ def main():
     for i, cv_path in enumerate(cv_files, 1):
         print(f"Traitement CV {i}/{len(cv_files)} : {cv_path.name}")
         cv = import_pdf(str(cv_path))
-        score = emb_cos_score(model, offre["content"], cv["content"])
+        score = scorer.score(offre["content"], cv["content"])
         results.append((cv["id"], score))
 
     results.sort(key=lambda x: x[1], reverse=True)

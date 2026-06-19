@@ -3,7 +3,7 @@ from pathlib import Path
 
 from ats_system.config import CV_GENERATOR_MODEL, DEFAULT_ANNOUNCEMENT
 from ats_system.data import import_pdf
-from ats_system.models.synthetic_cv_generator import SyntheticCVGenerator
+from ats_system.generators import SyntheticCVGenerator
 
 
 def main():

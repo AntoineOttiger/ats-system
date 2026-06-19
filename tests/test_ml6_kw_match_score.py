@@ -2,8 +2,7 @@ import argparse
 
 from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV
 from ats_system.data import import_pdf
-from ats_system.models.keyphrase_extractor import import_model
-from ats_system.scoring import ml6_extract_keywords, match_score
+from ats_system.systems import Ml6KeywordMatcher
 
 
 def main():
@@ -13,16 +12,17 @@ def main():
     args = parser.parse_args()
 
     print("Chargement du modèle...")
-    model = import_model()
+    matcher = Ml6KeywordMatcher()
+    matcher.import_model()
 
     print("Extraction du texte...")
     offre_text = import_pdf(args.offre)["content"]
     cv_text = import_pdf(args.cv)["content"]
 
     print("Calcul du score...")
-    keywords_offre = ml6_extract_keywords(model, offre_text)
-    keywords_cv = ml6_extract_keywords(model, cv_text)
-    result = match_score(keywords_offre, keywords_cv)
+    keywords_offre = matcher.extract_keywords(offre_text)
+    keywords_cv = matcher.extract_keywords(cv_text)
+    result = matcher.match(keywords_offre, keywords_cv)
 
     print(f"\nAnnonce   : {args.offre}")
     print(f"CV        : {args.cv}")

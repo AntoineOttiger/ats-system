@@ -2,7 +2,7 @@ import argparse
 
 from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV
 from ats_system.data import import_pdf
-from ats_system.scoring import baseline_extract_keywords, match_score
+from ats_system.systems import BaselineKeywordMatcher
 
 
 def main():
@@ -11,12 +11,15 @@ def main():
     parser.add_argument("--cv", default=str(DEFAULT_CV), help="Chemin vers le PDF du CV")
     args = parser.parse_args()
 
+    matcher = BaselineKeywordMatcher()
+    matcher.import_model()
+
     offre_text = import_pdf(args.offre)["content"]
     cv_text = import_pdf(args.cv)["content"]
 
-    keywords_offre = baseline_extract_keywords(offre_text)
-    keywords_cv = baseline_extract_keywords(cv_text)
-    result = match_score(keywords_offre, keywords_cv)
+    keywords_offre = matcher.extract_keywords(offre_text)
+    keywords_cv = matcher.extract_keywords(cv_text)
+    result = matcher.match(keywords_offre, keywords_cv)
 
     print(f"Annonce   : {args.offre}")
     print(f"CV        : {args.cv}")

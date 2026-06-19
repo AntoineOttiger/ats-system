@@ -26,8 +26,8 @@ LLM (Claude) en fenêtre glissante.
 - Type hints sur les signatures publiques.
 - Constantes de chemins centralisées dans `config.py` — ne pas coder de chemins en dur.
 - Chargement des modèles (HF, embeddings, Anthropic) volontairement séparé de
-  l'inférence (`import_model()` puis `infer_model()` / fonctions de scoring) ; le
-  chargement est coûteux (modèles HF) ou facturé (Claude).
+  l'inférence (`import_model()` puis les méthodes de scoring/extraction de la classe) ;
+  le chargement est coûteux (modèles HF) ou facturé (Claude).
 
 ## Cartographie
 
@@ -48,19 +48,22 @@ LLM (Claude) en fenêtre glissante.
   `build_ranking()` (paires `(cv_id, score)` triées → entrées
   `{rank, cv_id, score[, justification]}`) et `save_results()` (JSON horodaté
   sous `RESULTS_DIR`, jamais écrasé ; champs spécifiques via `extra`).
-- **`scoring/`** (réexporté par `ats_system.scoring`) :
-  - `keyword.py` — `baseline_extract_keywords()` (regex + stopwords FR/EN),
-    `ml6_extract_keywords()` (via le modèle ml6team), `match_score()`
-    (intersection offre/CV → `{"score", "matching", "missing"}`).
-  - `embedding.py` — `emb_cos_score()` : similarité cosinus offre/CV (0–100).
-- **`models/`** (wrappers de modèles) :
-  - `keyphrase_extractor.py` — modèle HF `ml6team/keyphrase-extraction-kbir-inspec`
-    (BERT, token classification ; chunks de 400 mots pour la limite 512 tokens).
-  - `embedding_model.py` — `SentenceTransformer` `all-MiniLM-L6-v2`.
+- **`systems/`** (réexporté par `ats_system.systems`) — un système ATS = une classe
+  par fichier, convention commune `import_model()` (chargement) puis inférence :
+  - `baseline_keyword_match.py` — `BaselineKeywordMatcher` : mots-clés baseline
+    (regex + stopwords FR/EN). `import_model()` (stopwords nltk),
+    `extract_keywords()`, `match()` (statique → `{"score", "matching", "missing"}`).
+  - `ml6_keyword_match.py` — `Ml6KeywordMatcher` : mots-clés via le modèle HF
+    `ml6team/keyphrase-extraction-kbir-inspec` (BERT, token classification ; chunks
+    de 400 mots pour la limite 512 tokens). `import_model()`, `extract_keywords()`,
+    `match()` (même logique que la baseline).
+  - `embedding_cosine.py` — `EmbeddingCosineScorer` : similarité cosinus offre/CV
+    (0–100) via `SentenceTransformer` `all-MiniLM-L6-v2`. `import_model()`, `score()`.
   - `sliding_window_ranker.py` — `SlidingWindowCVRanker` : classement par fenêtre
     glissante (inspiré de RankGPT) via Claude (modèle `SLIDING_WINDOW_MODEL` de
     `config.py`, SDK `anthropic`). Entrées : `import_model()`, `load_cvs()`,
     `run_sliding_window_ranking()` → `RankingResult`, `display_results()`.
+- **`generators/`** (réexporté par `ats_system.generators`) :
   - `synthetic_cv_generator.py` — `SyntheticCVGenerator` : génère des CVs
     synthétiques PDF face à une annonce via l'API Mistral (modèle `CV_GENERATOR_MODEL`,
     SDK `mistralai`). La proximité CV/annonce est pilotée par des niveaux de profil

@@ -61,9 +61,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Classe les CVs ENGINEERING face à l'annonce par défaut via les quatre méthodes."
     )
-    parser.add_argument("--limit", type=int, default=5, help="Nombre maximum de CVs à classer (0 = tous)")
+    parser.add_argument("--limit", type=int, default=30, help="Nombre maximum de CVs à classer (0 = tous)")
     parser.add_argument("--window-size", type=int, default=4, help="Fenêtre glissante : CVs par appel LLM")
-    parser.add_argument("--passes", type=int, default=3, help="Fenêtre glissante : nombre maximum de passes")
+    parser.add_argument("--passes", type=int, default=10, help="Fenêtre glissante : nombre maximum de passes")
     args = parser.parse_args()
 
     limit = args.limit if args.limit > 0 else None

@@ -3,8 +3,9 @@ ats_syst/
 .venv/
 venv/
 
-# Données (non versionnées)
-data/
+# Données (non versionnées, sauf l'annonce d'emploi)
+data/*
+!data/announcements/
 
 # Sorties des scripts (résultats de classement, non versionnées)
 results/

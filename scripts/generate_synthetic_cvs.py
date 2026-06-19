@@ -25,6 +25,18 @@ def main():
     parser.add_argument(
         "--temperature", type=float, default=0.7, help="Température d'échantillonnage du modèle"
     )
+    parser.add_argument(
+        "--no-optimize",
+        action="store_true",
+        help="Ne pas générer le CV « à optimiser » (généré par défaut, en plus du lot)",
+    )
+    parser.add_argument(
+        "--optimize-prompt",
+        type=str,
+        default=None,
+        help="Consigne personnalisée pour le CV « à optimiser » (candidat excellent sur le "
+        "fond mais au vocabulaire non aligné avec l'annonce). Défaut : consigne intégrée.",
+    )
     args = parser.parse_args()
 
     print("Extraction du texte de l'annonce...")
@@ -34,8 +46,14 @@ def main():
     generator = SyntheticCVGenerator(model=args.model, temperature=args.temperature)
     generator.import_model()
 
-    print(f"Génération de {args.count} CVs synthétiques (appels LLM)...")
-    run_dir = generator.generate_cvs(announcement["content"], n=args.count)
+    optimize_msg = "" if args.no_optimize else " + 1 CV « à optimiser »"
+    print(f"Génération de {args.count} CVs synthétiques{optimize_msg} (appels LLM)...")
+    run_dir = generator.generate_cvs(
+        announcement["content"],
+        n=args.count,
+        include_optimize=not args.no_optimize,
+        optimize_instruction=args.optimize_prompt,
+    )
 
     print(f"\nCVs générés dans : {run_dir}")
 

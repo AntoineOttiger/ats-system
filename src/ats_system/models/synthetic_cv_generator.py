@@ -92,6 +92,45 @@ PROFILE_LEVELS_BY_NAME: dict[str, ProfileLevel] = {lvl.name: lvl for lvl in PROF
 
 
 # ---------------------------------------------------------------------------
+# CV « à optimiser » — fit théorique fort, mais vocabulaire non aligné
+# ---------------------------------------------------------------------------
+
+# Rang de vérité-terrain du CV « à optimiser » : sur le fond, c'est un excellent
+# candidat (rank 0). Le « défaut » est volontaire et porte uniquement sur le
+# vocabulaire, pas sur l'adéquation réelle au poste.
+OPTIMIZE_RANK = 0
+
+# Consigne par défaut du CV « à optimiser » : candidat excellent sur le fond, mais
+# CV rédigé sans reprendre les termes de l'annonce, de sorte que les méthodes
+# mots-clés / embeddings le sous-évaluent à tort. C'est le CV « cobaye » destiné à
+# être optimisé ensuite.
+DEFAULT_OPTIMIZE_INSTRUCTION = (
+    "Generate the resume of a candidate who, IN SUBSTANCE, is an EXCELLENT match for "
+    "the job posting: they genuinely have every required skill, experience and "
+    "qualification. HOWEVER, the resume is deliberately worded so that it does NOT "
+    "use the vocabulary of the job posting: avoid its exact keywords, job titles, "
+    "tool and technology names, and standard phrasing. Instead, describe the very "
+    "same real competencies using synonyms, paraphrases, generic wording and "
+    "alternative job titles. The candidate is truly a top fit, but a keyword- or "
+    "embedding-based screening would wrongly underrate this resume because the terms "
+    "do not match the posting. Keep the profile credible and realistic."
+)
+
+
+def _optimize_level(instruction: Optional[str] = None) -> ProfileLevel:
+    """Construit le ``ProfileLevel`` du CV « à optimiser ».
+
+    Args:
+        instruction: Consigne personnalisée. À défaut, ``DEFAULT_OPTIMIZE_INSTRUCTION``.
+    """
+    return ProfileLevel(
+        name="to_optimize",
+        rank=OPTIMIZE_RANK,
+        instruction=instruction or DEFAULT_OPTIMIZE_INSTRUCTION,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Classe principale
 # ---------------------------------------------------------------------------
 
@@ -175,19 +214,27 @@ class SyntheticCVGenerator:
         levels: Optional[list[str]] = None,
         run_name: Optional[str] = None,
         output_dir: Path = GENERATED_DATA_DIR,
+        include_optimize: bool = True,
+        optimize_instruction: Optional[str] = None,
     ) -> Path:
         """Génère ``n`` CVs, les sauvegarde en PDF et écrit un manifest de vérité-terrain.
 
         Les ``n`` CVs se voient assigner un niveau de profil en **cyclant** sur la liste
-        des niveaux retenus (distribution équilibrée).
+        des niveaux retenus (distribution équilibrée). Si ``include_optimize`` est vrai,
+        **un** CV « à optimiser » supplémentaire est généré : un candidat excellent sur le
+        fond mais dont le vocabulaire ne reprend pas les termes de l'annonce (cas de test
+        délibéré pour les méthodes mots-clés / embeddings).
 
         Args:
-            announcement: Texte complet de l'annonce.
-            n:            Nombre de CVs à générer.
-            levels:       Sous-ensemble de noms de niveaux à utiliser (cf. ``PROFILE_LEVELS``).
-                          Défaut : tous les niveaux.
-            run_name:     Nom de dossier forcé. Défaut : ``synthetic_cvs_<horodatage>``.
-            output_dir:   Dossier parent des sorties. Défaut : ``GENERATED_DATA_DIR``.
+            announcement:         Texte complet de l'annonce.
+            n:                    Nombre de CVs « niveau de profil » à générer.
+            levels:               Sous-ensemble de noms de niveaux à utiliser
+                                  (cf. ``PROFILE_LEVELS``). Défaut : tous les niveaux.
+            run_name:             Nom de dossier forcé. Défaut : ``synthetic_cvs_<horodatage>``.
+            output_dir:           Dossier parent des sorties. Défaut : ``GENERATED_DATA_DIR``.
+            include_optimize:     Si vrai, génère en plus un CV « à optimiser ».
+            optimize_instruction: Consigne personnalisée du CV « à optimiser ».
+                                  Défaut : ``DEFAULT_OPTIMIZE_INSTRUCTION``.
 
         Returns:
             Le ``Path`` du dossier de sortie créé.
@@ -212,6 +259,22 @@ class SyntheticCVGenerator:
                 {"file": file_name, "level": level.name, "level_rank": level.rank}
             )
 
+        if include_optimize:
+            opt_level = _optimize_level(optimize_instruction)
+            logger.info("Génération du CV « à optimiser » (niveau : %s)", opt_level.name)
+            text = self.generate_cv(announcement, opt_level)
+
+            file_name = f"cv_{n + 1:03d}_{opt_level.name}.pdf"
+            self._write_pdf(text, run_dir / file_name)
+            manifest_cvs.append(
+                {
+                    "file": file_name,
+                    "level": opt_level.name,
+                    "level_rank": opt_level.rank,
+                    "optimize": True,
+                }
+            )
+
         manifest = {
             "generator": "synthetic_cv_generator",
             "timestamp": datetime.now().isoformat(timespec="seconds"),
@@ -221,6 +284,10 @@ class SyntheticCVGenerator:
                 "levels": [lvl.name for lvl in selected],
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens,
+                "include_optimize": include_optimize,
+                "optimize_instruction": (
+                    _optimize_level(optimize_instruction).instruction if include_optimize else None
+                ),
             },
             "cvs": manifest_cvs,
         }
@@ -228,7 +295,7 @@ class SyntheticCVGenerator:
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-        logger.info("%d CVs générés dans %s", n, run_dir)
+        logger.info("%d CVs générés dans %s", len(manifest_cvs), run_dir)
         return run_dir
 
     # ------------------------------------------------------------------

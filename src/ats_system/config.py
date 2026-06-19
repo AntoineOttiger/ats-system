@@ -7,7 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Données
 DATA_DIR = PROJECT_ROOT / "data"
-ANNOUNCEMENTS_DIR = DATA_DIR / "announcements"
+ANNOUNCEMENTS_DIR = DATA_DIR / "announcement"
 CV_DIR = DATA_DIR / "cv"
 
 # Sorties des scripts (résultats de classement, scores, etc.)

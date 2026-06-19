@@ -5,7 +5,7 @@ venv/
 
 # Données (non versionnées, sauf l'annonce d'emploi)
 data/*
-!data/announcements/
+!data/announcement/
 
 # Sorties des scripts (résultats de classement, non versionnées)
 results/

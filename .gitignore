@@ -3,6 +3,7 @@ ats_syst/
 .venv/
 venv/
 
+
 # Données (non versionnées, sauf l'annonce d'emploi)
 data/*
 !data/announcement/

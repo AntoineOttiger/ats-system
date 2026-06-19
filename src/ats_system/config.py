@@ -9,6 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 ANNOUNCEMENTS_DIR = DATA_DIR / "announcement"
 CV_DIR = DATA_DIR / "cv"
+GENERATED_DATA_DIR = DATA_DIR / "generated_data"
 
 # Sorties des scripts (résultats de classement, scores, etc.)
 RESULTS_DIR = PROJECT_ROOT / "results"
@@ -20,3 +21,6 @@ DEFAULT_CV = CV_DIR / DEFAULT_CV_CATEGORY / "12472574.pdf"
 
 # Modèle Claude utilisé par le SlidingWindowCVRanker (classement par fenêtre glissante)
 SLIDING_WINDOW_MODEL = "claude-haiku-4-5"
+
+# Modèle Mistral utilisé par le SyntheticCVGenerator (génération de CVs synthétiques)
+CV_GENERATOR_MODEL = "mistral-small-latest"

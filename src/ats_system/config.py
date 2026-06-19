@@ -24,3 +24,6 @@ SLIDING_WINDOW_MODEL = "claude-haiku-4-5"
 
 # Modèle Mistral utilisé par le SyntheticCVGenerator (génération de CVs synthétiques)
 CV_GENERATOR_MODEL = "mistral-small-latest"
+
+# Modèle Mistral utilisé par le CVOptimizerAgent (agent d'optimisation de CV, LangGraph)
+CV_OPTIMIZER_MODEL = "mistral-small-latest"

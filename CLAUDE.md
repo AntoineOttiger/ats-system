@@ -41,7 +41,8 @@ LLM (Claude) en fenêtre glissante.
   `DEFAULT_CV_CATEGORY` = `"ENGINEERING"`, `DEFAULT_CV`,
   `SLIDING_WINDOW_MODEL` = `"claude-haiku-4-5"` — modèle Claude du ranker,
   `GENERATED_DATA_DIR`, `CV_GENERATOR_MODEL` = `"mistral-small-latest"` — modèle
-  Mistral du générateur de CVs).
+  Mistral du générateur de CVs, `CV_OPTIMIZER_MODEL` = `"mistral-small-latest"` —
+  modèle Mistral de l'agent d'optimisation).
 - **`data/pdf_loader.py`** — `import_pdf()` : PDF → `{"id", "content"}` (via `pypdf`).
   Réexporté par `ats_system.data`.
 - **`results_io.py`** — schéma commun de sauvegarde des classements :
@@ -76,6 +77,18 @@ LLM (Claude) en fenêtre glissante.
     `optimize_instruction=` ; désactivable via `include_optimize=False`. Entrées :
     `import_model()`, `generate_cv()`, `generate_cvs()` → écrit les PDF + un
     `manifest.json` sous `GENERATED_DATA_DIR/synthetic_cvs_<timestamp>/`.
+
+- **`agents/`** (réexporté par `ats_system.agents`) — agents LangChain / LangGraph :
+  - `cv_optimizer_agent.py` — `CVOptimizerAgent` : agent ReAct (Mistral, modèle
+    `CV_OPTIMIZER_MODEL`, stack `langchain` / `langgraph` / `langchain-mistralai`) dont la
+    mission est de **réécrire un CV** pour le faire remonter dans le classement face aux
+    autres CVs d'un dataset synthétique, **sans inventer** de qualifications (reformulation
+    avec le vocabulaire de l'annonce). Le signal de feedback est le **rang compétitif** du
+    CV dans le dataset, calculé via `Ml6KeywordMatcher` face à l'annonce. Outils exposés
+    (réutilisent les systèmes) : `list_job_keywords()` et `rank_cv_in_dataset(cv_text)`
+    (rang + score + mots-clés manquants). Convention `import_model()` (charge le LLM, le
+    modèle ml6 et met en cache les mots-clés du dataset) puis `stream()` (trace des
+    « pensées ») / `optimize()` → texte du CV optimisé. Nécessite `MISTRAL_API_KEY`.
 
 ### `scripts/` — points d'entrée (`python scripts/<nom>.py`)
 

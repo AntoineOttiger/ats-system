@@ -18,6 +18,9 @@ dependencies = [
     "mistralai",
     "fpdf2",
     "python-dotenv",
+    "langgraph",
+    "langchain",
+    "langchain-mistralai",
 ]
 
 [project.optional-dependencies]

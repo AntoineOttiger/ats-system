@@ -30,3 +30,7 @@ CV_GENERATOR_MODEL = "mistral-small-latest"
 
 # Modèle Mistral utilisé par le CVOptimizerAgent (agent d'optimisation de CV, LangGraph)
 CV_OPTIMIZER_MODEL = "mistral-small-latest"
+
+# Débit cible par défaut des appels LLM (requêtes/seconde) pour éviter les 429 de
+# l'API. Calibré sur le free tier Mistral (~1 req/s) ; à augmenter sur un tier payant.
+LLM_REQUESTS_PER_SECOND = 1.0

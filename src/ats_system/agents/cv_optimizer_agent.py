@@ -25,11 +25,12 @@ from typing import Iterator, Optional
 
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.tools import tool
 from langchain_mistralai import ChatMistralAI
 from langgraph.prebuilt import create_react_agent
 
-from ats_system.config import CV_OPTIMIZER_MODEL
+from ats_system.config import CV_OPTIMIZER_MODEL, LLM_REQUESTS_PER_SECOND
 from ats_system.data import import_pdf
 from ats_system.systems import SlidingWindowCVRanker
 
@@ -88,19 +89,22 @@ class CVOptimizerAgent:
         window_size: int = 4,
         num_passes: int = 3,
         api_key: Optional[str] = None,
+        requests_per_second: float = LLM_REQUESTS_PER_SECOND,
     ):
         """
         Args:
-            dataset_dir:       Dossier d'un dataset synthétique (``synthetic_cvs_<...>/``)
-                               contenant les CVs concurrents et un ``manifest.json``.
-            announcement_text: Texte complet de l'annonce visée.
-            model:             Identifiant du modèle Mistral. Défaut : ``CV_OPTIMIZER_MODEL``.
-            temperature:       Température d'échantillonnage du modèle.
-            max_iterations:    Limite de récursion du graphe (``recursion_limit``) — borne le
-                               nombre d'étapes (appels LLM + outils) avant arrêt forcé.
-            window_size:       Taille de fenêtre du ``SlidingWindowCVRanker`` (signal de rang).
-            num_passes:        Nombre de passes du ``SlidingWindowCVRanker``.
-            api_key:           Clé API Mistral. À défaut, ``MISTRAL_API_KEY`` (chargée de ``.env``).
+            dataset_dir:         Dossier d'un dataset synthétique (``synthetic_cvs_<...>/``)
+                                 contenant les CVs concurrents et un ``manifest.json``.
+            announcement_text:   Texte complet de l'annonce visée.
+            model:               Identifiant du modèle Mistral. Défaut : ``CV_OPTIMIZER_MODEL``.
+            temperature:         Température d'échantillonnage du modèle.
+            max_iterations:      Limite de récursion du graphe (``recursion_limit``) — borne le
+                                 nombre d'étapes (appels LLM + outils) avant arrêt forcé.
+            window_size:         Taille de fenêtre du ``SlidingWindowCVRanker`` (signal de rang).
+            num_passes:          Nombre de passes du ``SlidingWindowCVRanker``.
+            api_key:             Clé API Mistral. À défaut, ``MISTRAL_API_KEY`` (chargée de ``.env``).
+            requests_per_second: Débit cible des requêtes LLM (limiteur partagé entre l'agent et
+                                 le ranker) pour éviter les 429. Défaut : ``LLM_REQUESTS_PER_SECOND``.
         """
         self.dataset_dir = Path(dataset_dir)
         self.announcement_text = announcement_text
@@ -110,9 +114,11 @@ class CVOptimizerAgent:
         self.window_size = window_size
         self.num_passes = num_passes
         self._api_key = api_key
+        self.requests_per_second = requests_per_second
 
         self._llm: Optional[ChatMistralAI] = None
         self._ranker: Optional[SlidingWindowCVRanker] = None
+        self._rate_limiter: Optional[InMemoryRateLimiter] = None
         self._agent = None
         # Cache rempli par import_model() : dicts {"id", "content"} des CVs concurrents.
         self._competitor_cvs: list[dict] = []
@@ -136,12 +142,30 @@ class CVOptimizerAgent:
                 "(voir .env.example) ou passez api_key=."
             )
 
-        self._llm = ChatMistralAI(model=self.model, temperature=self.temperature, api_key=key)
+        # Limiteur de débit partagé : un seul token bucket gouverne TOUS les appels
+        # Mistral du processus (modèle de l'agent + ranker), garantissant un plafond
+        # global en req/s même quand les appels s'alternent. max_bucket_size=1 empêche
+        # l'accumulation de tokens et donc les bursts.
+        self._rate_limiter = InMemoryRateLimiter(
+            requests_per_second=self.requests_per_second,
+            check_every_n_seconds=0.1,
+            max_bucket_size=1,
+        )
+
+        self._llm = ChatMistralAI(
+            model=self.model,
+            temperature=self.temperature,
+            api_key=key,
+            rate_limiter=self._rate_limiter,
+            max_retries=5,
+        )
 
         # Ranker fenêtre glissante : signal de rang jugé par LLM (cf. SLIDING_WINDOW_MODEL).
+        # Il partage le même limiteur de débit que l'agent.
         self._ranker = SlidingWindowCVRanker(
             window_size=self.window_size,
             num_passes=self.num_passes,
+            rate_limiter=self._rate_limiter,
         )
         self._ranker.import_model()
 

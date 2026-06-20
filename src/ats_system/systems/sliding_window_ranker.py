@@ -10,10 +10,13 @@ Mistral) est déduit du préfixe du modèle (cf. ``SLIDING_WINDOW_MODEL`` dans
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ats_system.config import SLIDING_WINDOW_MODEL
 from ats_system.llm import LLMClient
+
+if TYPE_CHECKING:
+    from langchain_core.rate_limiters import BaseRateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -61,19 +64,23 @@ class SlidingWindowCVRanker:
         max_tokens: int = 4096,
         api_key: Optional[str] = None,
         model: str = SLIDING_WINDOW_MODEL,
+        rate_limiter: Optional["BaseRateLimiter"] = None,
     ):
         """
         Args:
-            window_size: Nombre de CVs comparés à chaque appel LLM (3-5 recommandé).
-            step_size:   Décalage de la fenêtre à chaque étape. Défaut : window_size // 2.
-            num_passes:  Nombre maximum de passes complètes sur la liste.
-            max_tokens:  Nombre maximum de tokens par réponse du LLM.
-            api_key:     Clé API du fournisseur. À défaut, la variable
-                         d'environnement adéquate (``ANTHROPIC_API_KEY`` ou
-                         ``MISTRAL_API_KEY``, chargée depuis ``.env``) est utilisée.
-            model:       Identifiant du modèle à utiliser. Le fournisseur (Claude
-                         ou Mistral) est déduit de son préfixe. Défaut :
-                         ``SLIDING_WINDOW_MODEL`` (défini dans ``config.py``).
+            window_size:  Nombre de CVs comparés à chaque appel LLM (3-5 recommandé).
+            step_size:    Décalage de la fenêtre à chaque étape. Défaut : window_size // 2.
+            num_passes:   Nombre maximum de passes complètes sur la liste.
+            max_tokens:   Nombre maximum de tokens par réponse du LLM.
+            api_key:      Clé API du fournisseur. À défaut, la variable
+                          d'environnement adéquate (``ANTHROPIC_API_KEY`` ou
+                          ``MISTRAL_API_KEY``, chargée depuis ``.env``) est utilisée.
+            model:        Identifiant du modèle à utiliser. Le fournisseur (Claude
+                          ou Mistral) est déduit de son préfixe. Défaut :
+                          ``SLIDING_WINDOW_MODEL`` (défini dans ``config.py``).
+            rate_limiter: Limiteur de débit optionnel transmis au ``LLMClient`` pour
+                          plafonner la cadence des nombreux appels de la fenêtre
+                          glissante (évite les 429). Partageable avec d'autres clients.
         """
         self.window_size = window_size
         self.step_size = step_size if step_size is not None else max(1, window_size // 2)
@@ -81,6 +88,7 @@ class SlidingWindowCVRanker:
         self.max_tokens = max_tokens
         self.model = model
         self._api_key = api_key
+        self._rate_limiter = rate_limiter
         self._llm: Optional[LLMClient] = None
 
     # ------------------------------------------------------------------
@@ -94,7 +102,7 @@ class SlidingWindowCVRanker:
         l'argument ``api_key`` ou, à défaut, depuis la variable d'environnement du
         fournisseur, chargée d'un fichier ``.env``.
         """
-        self._llm = LLMClient(self.model, api_key=self._api_key)
+        self._llm = LLMClient(self.model, api_key=self._api_key, rate_limiter=self._rate_limiter)
         self._llm.import_model()
 
     def load_cvs(self, cvs: list[dict]) -> list[CV]:

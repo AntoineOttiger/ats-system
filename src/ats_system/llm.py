@@ -14,9 +14,13 @@ convention du projet : le chargement (``import_model``) est séparé de l'infér
 
 import logging
 import os
-from typing import Optional
+import time
+from typing import TYPE_CHECKING, Optional
 
 from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    from langchain_core.rate_limiters import BaseRateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -66,17 +70,33 @@ class LLMClient:
     (chargement coûteux/facturé séparé de l'inférence).
     """
 
-    def __init__(self, model: str, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        model: str,
+        api_key: Optional[str] = None,
+        rate_limiter: Optional["BaseRateLimiter"] = None,
+        max_retries: int = 5,
+    ):
         """
         Args:
-            model:   Identifiant du modèle. Le fournisseur en est déduit
-                     (cf. :func:`detect_provider`).
-            api_key: Clé API explicite. À défaut, la variable d'environnement
-                     propre au fournisseur (chargée depuis ``.env``) est utilisée.
+            model:        Identifiant du modèle. Le fournisseur en est déduit
+                          (cf. :func:`detect_provider`).
+            api_key:      Clé API explicite. À défaut, la variable d'environnement
+                          propre au fournisseur (chargée depuis ``.env``) est utilisée.
+            rate_limiter: Limiteur de débit optionnel (``BaseRateLimiter`` de
+                          ``langchain_core``), **appliqué uniquement aux modèles
+                          Mistral**. Si fourni, ``acquire(blocking=True)`` est appelé
+                          avant chaque requête Mistral — partager une même instance
+                          entre plusieurs clients plafonne le débit global. Ignoré
+                          pour les autres fournisseurs (ex. Claude).
+            max_retries:  Nombre maximum de tentatives en cas d'erreur de rate limit
+                          (429), avec backoff exponentiel.
         """
         self.model = model
         self.provider = detect_provider(model)
         self._api_key = api_key
+        self._rate_limiter = rate_limiter
+        self._max_retries = max_retries
         self.client = None
 
     def import_model(self) -> None:
@@ -129,12 +149,53 @@ class LLMClient:
                 kwargs["temperature"] = temperature
             # Pas de thinking : on isole le premier bloc texte (les modèles avec
             # thinking adaptatif peuvent renvoyer des blocs en amont).
-            response = self.client.messages.create(**kwargs)
+            response = self._call_with_retry(self.client.messages.create, **kwargs)
             return next((block.text for block in response.content if block.type == "text"), "")
 
         # Mistral
         kwargs = {"model": self.model, "max_tokens": max_tokens, "messages": messages}
         if temperature is not None:
             kwargs["temperature"] = temperature
-        response = self.client.chat.complete(**kwargs)
+        response = self._call_with_retry(self.client.chat.complete, **kwargs)
         return (response.choices[0].message.content or "").strip()
+
+    # ------------------------------------------------------------------
+    # Helpers internes
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_rate_limit_error(exc: Exception) -> bool:
+        """Détecte une erreur de type rate limit (429), quel que soit le SDK."""
+        if getattr(exc, "status_code", None) == 429:
+            return True
+        text = str(exc).lower()
+        return "429" in text or "rate limit" in text
+
+    def _call_with_retry(self, func, **kwargs):
+        """Appelle ``func(**kwargs)`` avec limitation de débit et retry sur 429.
+
+        Respecte le limiteur de débit partagé (``acquire``) avant chaque tentative,
+        puis réessaie avec un backoff exponentiel si l'API répond par un rate limit.
+        """
+        # Le limiteur de débit ne vise que Mistral (free tier ~1 req/s) ; les autres
+        # fournisseurs (Claude) ne sont pas throttlés ici.
+        throttled = self._rate_limiter is not None and self.provider == PROVIDER_MISTRAL
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(self._max_retries):
+            if throttled:
+                self._rate_limiter.acquire(blocking=True)
+            try:
+                return func(**kwargs)
+            except Exception as exc:  # noqa: BLE001 — on relève si ce n'est pas un 429
+                if not self._is_rate_limit_error(exc):
+                    raise
+                last_exc = exc
+                wait = 2.0 ** attempt
+                logger.warning(
+                    "Rate limit atteint (tentative %d/%d). Nouvel essai dans %.1fs.",
+                    attempt + 1, self._max_retries, wait,
+                )
+                time.sleep(wait)
+        # Toutes les tentatives ont échoué sur un rate limit.
+        raise last_exc

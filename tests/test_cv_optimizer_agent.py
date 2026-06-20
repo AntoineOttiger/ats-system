@@ -89,7 +89,7 @@ def main():
     announcement = import_pdf(args.announcement)["content"]
     cv_text = import_pdf(str(cv_path))["content"]
 
-    print("Initialisation de l'agent (LLM Mistral + modèle ml6 + cache du dataset)...")
+    print("Initialisation de l'agent (LLM Mistral + ranker fenêtre glissante + cache des CV concurrents)...")
     agent = CVOptimizerAgent(
         dataset_dir=dataset_dir,
         announcement_text=announcement,

@@ -2,17 +2,19 @@
 
 Mission de l'agent : réécrire un CV pour qu'il **remonte dans le classement** face aux
 autres candidats d'un dataset synthétique, sans inventer de qualifications — uniquement en
-reformulant la substance réelle du candidat avec le vocabulaire attendu par l'annonce.
+reformulant et en mettant en valeur la substance réelle du candidat face à l'annonce.
 
-Cas d'usage cible : le CV « à optimiser » (``to_optimize``) produit par le
-``SyntheticCVGenerator`` — un candidat excellent sur le fond mais au vocabulaire non aligné,
-que les méthodes mots-clés sous-évaluent à tort.
-
-Le signal de feedback de l'agent n'est pas un score isolé mais le **rang compétitif** du CV
-parmi les autres CVs du dataset, calculé via ``Ml6KeywordMatcher`` face à l'annonce. L'agent
-est un ReAct préfabriqué (``langgraph.prebuilt.create_react_agent``) tournant sous Mistral
+Le signal de feedback de l'agent n'est pas un score mots-clés isolé mais le **rang
+compétitif** du CV parmi les autres CVs du dataset, jugé holistiquement par un LLM via
+``SlidingWindowCVRanker`` (classement par fenêtre glissante face à l'annonce). L'agent reçoit
+l'annonce complète et **décide seul** comment réécrire le CV — il n'y a pas d'outil de
+vocabulaire imposé. L'agent est un ReAct préfabriqué
+(``langgraph.prebuilt.create_react_agent``) tournant sous Mistral
 (``langchain_mistralai.ChatMistralAI``). La clé API est lue depuis ``.env`` (variable
 ``MISTRAL_API_KEY``) — jamais codée en dur.
+
+⚠️ Coût : chaque appel de l'outil ``rank_cv_in_dataset`` relance un classement LLM **complet**
+de tout le dataset (plusieurs requêtes au modèle du ranker, cf. ``SLIDING_WINDOW_MODEL``).
 """
 
 import json
@@ -29,7 +31,7 @@ from langgraph.prebuilt import create_react_agent
 
 from ats_system.config import CV_OPTIMIZER_MODEL
 from ats_system.data import import_pdf
-from ats_system.systems import Ml6KeywordMatcher
+from ats_system.systems import SlidingWindowCVRanker
 
 logger = logging.getLogger(__name__)
 
@@ -42,24 +44,23 @@ SYSTEM_PROMPT = """Tu es un expert en optimisation de CV pour les systèmes ATS 
 Tracking Systems).
 
 ## Mission
-On te confie le CV d'un candidat qui, SUR LE FOND, correspond très bien à l'annonce, mais \
-dont la rédaction n'emploie pas le vocabulaire attendu : les filtres par mots-clés le \
-sous-évaluent donc à tort. Ta mission est de RÉÉCRIRE ce CV pour qu'il REMONTE dans le \
-classement face aux autres candidats du dataset.
+On te confie une annonce et le CV d'un candidat. Ta mission est de RÉÉCRIRE ce CV pour qu'il \
+REMONTE dans le classement face aux autres candidats du dataset, en l'alignant au mieux avec \
+l'annonce.
 
 ## Règle absolue
 INTERDICTION d'inventer des compétences, expériences, diplômes ou résultats. Tu ne fais que \
-REFORMULER la substance réelle déjà présente dans le CV en employant les termes, intitulés \
-de poste et technologies attendus par l'annonce (synonymes explicités, vocabulaire aligné). \
+REFORMULER et METTRE EN VALEUR la substance réelle déjà présente dans le CV face à l'annonce. \
 Le CV doit rester crédible et honnête.
 
 ## Méthode (boucle outillée)
-1. Appelle `list_job_keywords` pour connaître le vocabulaire cible de l'annonce.
-2. Appelle `rank_cv_in_dataset` sur le CV courant pour mesurer son rang et lire les \
-mots-clés MANQUANTS.
-3. Réécris le CV en incorporant honnêtement les mots-clés manquants pertinents.
+1. Analyse l'annonce et le CV : repère les éléments du CV pertinents pour l'annonce et la \
+meilleure façon de les formuler.
+2. Appelle `rank_cv_in_dataset` sur le CV courant pour mesurer son rang parmi les autres \
+candidats et lire l'analyse du recruteur.
+3. Réécris le CV pour mieux valoriser les éléments pertinents (sans rien inventer).
 4. Re-mesure avec `rank_cv_in_dataset` : le rang doit s'améliorer. Itère jusqu'à \
-stabilisation (plus de gain de rang) ou épuisement des mots-clés légitimement intégrables.
+stabilisation (plus de gain de rang).
 
 ## Sortie finale
 Quand le rang est stabilisé, renvoie UNIQUEMENT le texte complet du CV optimisé, sans \
@@ -69,9 +70,12 @@ commentaire ni explication autour."""
 class CVOptimizerAgent:
     """Agent ReAct (Mistral) qui optimise un CV pour grimper dans le classement d'un dataset.
 
-    Convention du projet : le chargement coûteux/facturé (LLM Mistral, modèle ml6, extraction
-    et cache des mots-clés du dataset) est isolé dans :func:`import_model` ; l'inférence se
-    fait via :func:`stream` / :func:`optimize`.
+    Le rang du CV est jugé par un LLM via :class:`SlidingWindowCVRanker` (classement par
+    fenêtre glissante face à l'annonce), et non par un comptage de mots-clés.
+
+    Convention du projet : le chargement coûteux/facturé (LLM Mistral, ranker fenêtre
+    glissante, lecture et cache des CVs concurrents du dataset) est isolé dans
+    :func:`import_model` ; l'inférence se fait via :func:`stream` / :func:`optimize`.
     """
 
     def __init__(
@@ -81,6 +85,8 @@ class CVOptimizerAgent:
         model: str = CV_OPTIMIZER_MODEL,
         temperature: float = 0.4,
         max_iterations: int = 20,
+        window_size: int = 4,
+        num_passes: int = 3,
         api_key: Optional[str] = None,
     ):
         """
@@ -92,6 +98,8 @@ class CVOptimizerAgent:
             temperature:       Température d'échantillonnage du modèle.
             max_iterations:    Limite de récursion du graphe (``recursion_limit``) — borne le
                                nombre d'étapes (appels LLM + outils) avant arrêt forcé.
+            window_size:       Taille de fenêtre du ``SlidingWindowCVRanker`` (signal de rang).
+            num_passes:        Nombre de passes du ``SlidingWindowCVRanker``.
             api_key:           Clé API Mistral. À défaut, ``MISTRAL_API_KEY`` (chargée de ``.env``).
         """
         self.dataset_dir = Path(dataset_dir)
@@ -99,25 +107,26 @@ class CVOptimizerAgent:
         self.model = model
         self.temperature = temperature
         self.max_iterations = max_iterations
+        self.window_size = window_size
+        self.num_passes = num_passes
         self._api_key = api_key
 
         self._llm: Optional[ChatMistralAI] = None
-        self._matcher: Optional[Ml6KeywordMatcher] = None
+        self._ranker: Optional[SlidingWindowCVRanker] = None
         self._agent = None
-        # Cache rempli par import_model() :
-        self._job_keywords: set[str] = set()
-        self._dataset_scores: list[tuple[str, float]] = []  # (nom_fichier, score) des concurrents
+        # Cache rempli par import_model() : dicts {"id", "content"} des CVs concurrents.
+        self._competitor_cvs: list[dict] = []
 
     # ------------------------------------------------------------------
     # API publique
     # ------------------------------------------------------------------
 
     def import_model(self) -> None:
-        """Charge le LLM, le matcher ml6, met en cache les mots-clés du dataset et bâtit l'agent.
+        """Charge le LLM Mistral, le ranker fenêtre glissante, les CVs concurrents et l'agent.
 
-        Coûteux : une extraction ml6 par CV concurrent + l'annonce. Fait une seule fois ;
-        la boucle de feedback ne refait ensuite qu'une extraction (sur le brouillon courant)
-        par appel d'outil.
+        Le ranker est chargé une fois (``import_model``) ; en revanche, la boucle de feedback
+        relance un classement LLM **complet** du dataset à chaque appel d'outil (coûteux).
+        Les textes des CVs concurrents sont lus et mis en cache une seule fois ici.
         """
         load_dotenv()
         key = self._api_key or os.environ.get("MISTRAL_API_KEY")
@@ -129,17 +138,16 @@ class CVOptimizerAgent:
 
         self._llm = ChatMistralAI(model=self.model, temperature=self.temperature, api_key=key)
 
-        # Modèle ml6 partagé entre l'annonce et tous les CVs.
-        self._matcher = Ml6KeywordMatcher()
-        self._matcher.import_model()
+        # Ranker fenêtre glissante : signal de rang jugé par LLM (cf. SLIDING_WINDOW_MODEL).
+        self._ranker = SlidingWindowCVRanker(
+            window_size=self.window_size,
+            num_passes=self.num_passes,
+        )
+        self._ranker.import_model()
 
-        # Mots-clés de l'annonce (vocabulaire cible) — extraits une fois.
-        self._job_keywords = self._matcher.extract_keywords(self.announcement_text)
-        logger.info("Mots-clés de l'annonce extraits : %d", len(self._job_keywords))
-
-        # Score ml6 de chaque CV concurrent (tous sauf le « à optimiser »).
-        self._dataset_scores = self._score_dataset_competitors()
-        logger.info("CVs concurrents scorés : %d", len(self._dataset_scores))
+        # Textes des CVs concurrents (tous sauf le « à optimiser ») — lus une fois.
+        self._competitor_cvs = self._load_dataset_competitors()
+        logger.info("CVs concurrents chargés : %d", len(self._competitor_cvs))
 
         # Outils (closures sur le cache) + agent ReAct.
         self._agent = create_react_agent(
@@ -162,7 +170,12 @@ class CVOptimizerAgent:
         if self._agent is None:
             raise RuntimeError("Appelez import_model() avant de lancer l'agent.")
 
-        initial = HumanMessage(content=f"Voici le CV à optimiser :\n\n{cv_text}")
+        initial = HumanMessage(
+            content=(
+                f"## Annonce visée\n{self.announcement_text}\n\n"
+                f"## CV à optimiser\n{cv_text}"
+            )
+        )
         yield from self._agent.stream(
             {"messages": [initial]},
             config={"recursion_limit": self.max_iterations},
@@ -181,7 +194,12 @@ class CVOptimizerAgent:
         if self._agent is None:
             raise RuntimeError("Appelez import_model() avant de lancer l'agent.")
 
-        initial = HumanMessage(content=f"Voici le CV à optimiser :\n\n{cv_text}")
+        initial = HumanMessage(
+            content=(
+                f"## Annonce visée\n{self.announcement_text}\n\n"
+                f"## CV à optimiser\n{cv_text}"
+            )
+        )
         result = self._agent.invoke(
             {"messages": [initial]},
             config={"recursion_limit": self.max_iterations},
@@ -195,8 +213,8 @@ class CVOptimizerAgent:
     # Helpers internes
     # ------------------------------------------------------------------
 
-    def _score_dataset_competitors(self) -> list[tuple[str, float]]:
-        """Charge les CVs concurrents du dataset et calcule leur score ml6 face à l'annonce.
+    def _load_dataset_competitors(self) -> list[dict]:
+        """Lit les CVs concurrents du dataset (dicts ``{"id", "content"}`` pour ``load_cvs``).
 
         Le CV « à optimiser » (entrée ``optimize: true`` du manifest) est exclu : c'est le
         candidat dont l'agent fait justement varier le rang.
@@ -204,61 +222,46 @@ class CVOptimizerAgent:
         manifest_path = self.dataset_dir / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-        scores: list[tuple[str, float]] = []
+        competitors: list[dict] = []
         for entry in manifest["cvs"]:
             if entry.get("optimize"):
                 continue
             cv_path = self.dataset_dir / entry["file"]
-            cv_text = import_pdf(str(cv_path))["content"]
-            keywords = self._matcher.extract_keywords(cv_text)
-            score = self._matcher.match(self._job_keywords, keywords)["score"]
-            scores.append((entry["file"], score))
-        return scores
+            competitors.append({"id": entry["file"], "content": import_pdf(str(cv_path))["content"]})
+        return competitors
 
     def _build_tools(self) -> list:
         """Construit les outils LangChain (closures sur le cache du dataset)."""
 
         @tool
-        def list_job_keywords() -> str:
-            """Liste les mots-clés (vocabulaire cible) attendus par l'annonce.
-
-            À utiliser pour savoir quels termes incorporer honnêtement dans le CV.
-            """
-            return "Mots-clés attendus par l'annonce :\n" + ", ".join(sorted(self._job_keywords))
-
-        @tool
         def rank_cv_in_dataset(cv_text: str) -> str:
             """Mesure le rang du CV fourni parmi les candidats du dataset, face à l'annonce.
 
-            Calcule le score mots-clés (ml6) du CV, l'insère dans le classement des autres
-            candidats et renvoie : son rang, son score, les scores des concurrents et la liste
-            des mots-clés MANQUANTS (ceux de l'annonce absents du CV) — le signal le plus utile
+            Insère le CV parmi les concurrents et lance un classement par fenêtre glissante
+            (jugement LLM holistique, pas un comptage de mots-clés). Renvoie son rang, le
+            classement complet et l'analyse du recruteur sur ce CV — le signal le plus utile
             pour la réécriture.
+
+            ⚠️ Appel coûteux : relance un classement LLM complet du dataset à chaque fois.
 
             Args:
                 cv_text: Texte complet du CV à évaluer.
             """
-            cv_keywords = self._matcher.extract_keywords(cv_text)
-            match = self._matcher.match(self._job_keywords, cv_keywords)
-            cv_score = match["score"]
-
-            # Classement : concurrents + candidat courant, du meilleur au pire.
-            ranking = sorted(
-                self._dataset_scores + [("CV_optimisé", cv_score)],
-                key=lambda pair: pair[1],
-                reverse=True,
+            candidate_id = "CV_optimisé"
+            cvs = self._ranker.load_cvs(
+                self._competitor_cvs + [{"id": candidate_id, "content": cv_text}]
             )
-            position = next(i for i, (name, _) in enumerate(ranking, 1) if name == "CV_optimisé")
+            result = self._ranker.run_sliding_window_ranking(self.announcement_text, cvs)
+            ranking = result.ranked_cvs
+
+            position = next(i for i, cv in enumerate(ranking, 1) if cv.id == candidate_id)
             total = len(ranking)
-
-            competitors = "\n".join(
-                f"  #{i}  {name}  (score {score})" for i, (name, score) in enumerate(ranking, 1)
-            )
-            missing = ", ".join(sorted(match["missing"])) or "(aucun)"
+            classement = "\n".join(f"  #{i}  {cv.id}" for i, cv in enumerate(ranking, 1))
+            analyse = result.justifications.get(candidate_id, "(aucune)")
             return (
-                f"Rang du CV optimisé : {position}/{total}  (score {cv_score})\n"
-                f"Classement complet :\n{competitors}\n\n"
-                f"Mots-clés MANQUANTS à intégrer honnêtement : {missing}"
+                f"Rang du CV optimisé : {position}/{total}\n"
+                f"Classement complet (du meilleur au pire) :\n{classement}\n\n"
+                f"Analyse du recruteur sur ce CV : {analyse}"
             )
 
-        return [list_job_keywords, rank_cv_in_dataset]
+        return [rank_cv_in_dataset]

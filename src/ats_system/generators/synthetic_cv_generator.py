@@ -5,25 +5,24 @@ pertinence vis-à-vis de l'annonce est **connue à l'avance** : chaque CV est g�
 pour un *niveau de profil* discret (du candidat idéal au profil hors-sujet). Cela
 fournit une vérité-terrain réutilisable pour évaluer les méthodes de classement.
 
-Le modèle Mistral est appelé via le SDK officiel ``mistralai`` ; la clé API est
-chargée depuis un fichier ``.env`` (variable ``MISTRAL_API_KEY``) — jamais codée
-en dur, comme pour le ``SlidingWindowCVRanker``.
+Le LLM est appelé via :class:`ats_system.llm.LLMClient` : le fournisseur (Mistral ou
+Claude) est déduit du préfixe du modèle (cf. ``CV_GENERATOR_MODEL`` dans
+``config.py``). La clé API est chargée depuis un fichier ``.env`` — jamais codée en
+dur, comme pour le ``SlidingWindowCVRanker``.
 """
 
 import json
 import logging
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
-from mistralai.client import Mistral
 
 from ats_system.config import CV_GENERATOR_MODEL, GENERATED_DATA_DIR
+from ats_system.llm import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -152,10 +151,12 @@ class SyntheticCVGenerator:
     ):
         """
         Args:
-            model:       Identifiant du modèle Mistral. Défaut : ``CV_GENERATOR_MODEL``
+            model:       Identifiant du modèle. Le fournisseur (Mistral ou Claude)
+                         est déduit de son préfixe. Défaut : ``CV_GENERATOR_MODEL``
                          (défini dans ``config.py``).
-            api_key:     Clé API Mistral. À défaut, la variable d'environnement
-                         ``MISTRAL_API_KEY`` (chargée depuis ``.env``) est utilisée.
+            api_key:     Clé API du fournisseur. À défaut, la variable
+                         d'environnement adéquate (``MISTRAL_API_KEY`` ou
+                         ``ANTHROPIC_API_KEY``, chargée depuis ``.env``) est utilisée.
             max_tokens:  Nombre maximum de tokens par CV généré.
             temperature: Température d'échantillonnage du modèle.
         """
@@ -163,27 +164,21 @@ class SyntheticCVGenerator:
         self.max_tokens = max_tokens
         self.temperature = temperature
         self._api_key = api_key
-        self.client: Optional[Mistral] = None
+        self._llm: Optional[LLMClient] = None
 
     # ------------------------------------------------------------------
     # API publique
     # ------------------------------------------------------------------
 
     def import_model(self) -> None:
-        """Initialise le client Mistral. À appeler avant toute génération.
+        """Initialise le client LLM (Mistral ou Claude). À appeler avant toute génération.
 
-        La clé API est lue depuis l'argument ``api_key`` ou, à défaut, depuis la
-        variable d'environnement ``MISTRAL_API_KEY`` chargée d'un fichier ``.env``.
+        Le fournisseur est déduit du préfixe du modèle. La clé API est lue depuis
+        l'argument ``api_key`` ou, à défaut, depuis la variable d'environnement du
+        fournisseur, chargée d'un fichier ``.env``.
         """
-        load_dotenv()
-        key = self._api_key or os.environ.get("MISTRAL_API_KEY")
-        if not key:
-            raise EnvironmentError(
-                "Aucune clé API trouvée. Renseignez MISTRAL_API_KEY dans un fichier .env "
-                "(voir .env.example) ou passez api_key=."
-            )
-        self.client = Mistral(api_key=key)
-        logger.info("Client Mistral initialisé (modèle : %s)", self.model)
+        self._llm = LLMClient(self.model, api_key=self._api_key)
+        self._llm.import_model()
 
     def generate_cv(self, announcement: str, level: ProfileLevel) -> str:
         """Génère le texte d'un CV pour un niveau de profil donné.
@@ -195,17 +190,11 @@ class SyntheticCVGenerator:
         Returns:
             Le texte du CV généré.
         """
-        if self.client is None:
+        if self._llm is None:
             raise RuntimeError("Appelez import_model() avant de générer des CVs.")
 
         prompt = self._build_prompt(announcement, level)
-        response = self.client.chat.complete(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return (response.choices[0].message.content or "").strip()
+        return self._llm.complete(prompt, self.max_tokens, self.temperature)
 
     def generate_cvs(
         self,
@@ -239,7 +228,7 @@ class SyntheticCVGenerator:
         Returns:
             Le ``Path`` du dossier de sortie créé.
         """
-        if self.client is None:
+        if self._llm is None:
             raise RuntimeError("Appelez import_model() avant de générer des CVs.")
         if n < 1:
             raise ValueError("Il faut générer au moins 1 CV.")

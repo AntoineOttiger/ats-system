@@ -2,21 +2,18 @@
 
 Chaque fenêtre contient un petit sous-ensemble de CVs que le LLM reclasse
 localement. Plusieurs passes sont effectuées jusqu'à stabilisation du classement.
-Le modèle Claude est appelé via le SDK officiel ``anthropic`` ; la clé API est
-chargée depuis un fichier ``.env`` (variable ``ANTHROPIC_API_KEY``) — jamais
-codée en dur.
+Le LLM est appelé via :class:`ats_system.llm.LLMClient` : le fournisseur (Claude ou
+Mistral) est déduit du préfixe du modèle (cf. ``SLIDING_WINDOW_MODEL`` dans
+``config.py``). La clé API est chargée depuis un fichier ``.env`` — jamais codée en dur.
 """
 
 import json
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import Optional
 
-import anthropic
-from dotenv import load_dotenv
-
 from ats_system.config import SLIDING_WINDOW_MODEL
+from ats_system.llm import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +68,11 @@ class SlidingWindowCVRanker:
             step_size:   Décalage de la fenêtre à chaque étape. Défaut : window_size // 2.
             num_passes:  Nombre maximum de passes complètes sur la liste.
             max_tokens:  Nombre maximum de tokens par réponse du LLM.
-            api_key:     Clé API Anthropic. À défaut, la variable d'environnement
-                         ``ANTHROPIC_API_KEY`` (chargée depuis ``.env``) est utilisée.
-            model:       Identifiant du modèle Claude à utiliser. Défaut :
+            api_key:     Clé API du fournisseur. À défaut, la variable
+                         d'environnement adéquate (``ANTHROPIC_API_KEY`` ou
+                         ``MISTRAL_API_KEY``, chargée depuis ``.env``) est utilisée.
+            model:       Identifiant du modèle à utiliser. Le fournisseur (Claude
+                         ou Mistral) est déduit de son préfixe. Défaut :
                          ``SLIDING_WINDOW_MODEL`` (défini dans ``config.py``).
         """
         self.window_size = window_size
@@ -82,27 +81,21 @@ class SlidingWindowCVRanker:
         self.max_tokens = max_tokens
         self.model = model
         self._api_key = api_key
-        self.client: Optional[anthropic.Anthropic] = None
+        self._llm: Optional[LLMClient] = None
 
     # ------------------------------------------------------------------
     # API publique
     # ------------------------------------------------------------------
 
     def import_model(self) -> None:
-        """Initialise le client Anthropic. À appeler avant tout classement.
+        """Initialise le client LLM (Claude ou Mistral). À appeler avant tout classement.
 
-        La clé API est lue depuis l'argument ``api_key`` ou, à défaut, depuis la
-        variable d'environnement ``ANTHROPIC_API_KEY`` chargée d'un fichier ``.env``.
+        Le fournisseur est déduit du préfixe du modèle. La clé API est lue depuis
+        l'argument ``api_key`` ou, à défaut, depuis la variable d'environnement du
+        fournisseur, chargée d'un fichier ``.env``.
         """
-        load_dotenv()
-        key = self._api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not key:
-            raise EnvironmentError(
-                "Aucune clé API trouvée. Renseignez ANTHROPIC_API_KEY dans un fichier .env "
-                "(voir .env.example) ou passez api_key=."
-            )
-        self.client = anthropic.Anthropic(api_key=key)
-        logger.info("Client Anthropic initialisé (modèle : %s)", self.model)
+        self._llm = LLMClient(self.model, api_key=self._api_key)
+        self._llm.import_model()
 
     def load_cvs(self, cvs: list[dict]) -> list[CV]:
         """Convertit des dicts bruts en objets CV.
@@ -133,7 +126,7 @@ class SlidingWindowCVRanker:
         Returns:
             Un ``RankingResult`` avec la liste ordonnée finale et ses métadonnées.
         """
-        if self.client is None:
+        if self._llm is None:
             raise RuntimeError("Appelez import_model() avant de lancer le ranker.")
         if len(cvs) < 2:
             raise ValueError("Il faut au moins 2 CVs à classer.")
@@ -222,17 +215,9 @@ class SlidingWindowCVRanker:
         """
         prompt = self._build_prompt(job_offer, window)
 
-        # Pas de thinking : le reclassement de fenêtre n'en a pas besoin, et cela
-        # garde l'appel compatible avec tous les modèles (Haiku 4.5 ne supporte pas
-        # le thinking adaptatif) tout en réduisant les tokens facturés.
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        # La réponse peut contenir des blocs thinking : on isole le bloc texte.
-        raw = next((block.text for block in response.content if block.type == "text"), "")
+        # Le reclassement de fenêtre n'a pas besoin de thinking ; LLMClient isole
+        # déjà le bloc texte de la réponse, quel que soit le fournisseur.
+        raw = self._llm.complete(prompt, self.max_tokens)
         return self._parse_response(raw, window)
 
     def _build_prompt(self, job_offer: str, window: list[CV]) -> str:

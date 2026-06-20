@@ -19,10 +19,13 @@ DEFAULT_ANNOUNCEMENT = ANNOUNCEMENTS_DIR / "mechanical_engineer_job_posting_2016
 DEFAULT_CV_CATEGORY = "ENGINEERING"
 DEFAULT_CV = CV_DIR / DEFAULT_CV_CATEGORY / "12472574.pdf"
 
-# Modèle Claude utilisé par le SlidingWindowCVRanker (classement par fenêtre glissante)
-SLIDING_WINDOW_MODEL = "claude-haiku-4-5"
+# Modèle utilisé par le SlidingWindowCVRanker (classement par fenêtre glissante).
+# Le fournisseur (Claude ou Mistral) est déduit du préfixe du nom — il suffit de
+# changer cette valeur pour basculer (ex. "mistral-small-latest").
+SLIDING_WINDOW_MODEL = "mistral-small-latest"
 
-# Modèle Mistral utilisé par le SyntheticCVGenerator (génération de CVs synthétiques)
+# Modèle utilisé par le SyntheticCVGenerator (génération de CVs synthétiques).
+# Idem : fournisseur déduit du préfixe (ex. "claude-haiku-4-5" pour passer sur Claude).
 CV_GENERATOR_MODEL = "mistral-small-latest"
 
 # Modèle Mistral utilisé par le CVOptimizerAgent (agent d'optimisation de CV, LangGraph)

@@ -1,6 +1,6 @@
 import argparse
 
-from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY
+from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY, SLIDING_WINDOW_MODEL
 from ats_system.data import import_pdf
 from ats_system.systems import SlidingWindowCVRanker
 from ats_system.results_io import build_ranking, save_results
@@ -10,17 +10,21 @@ CATEGORY_DIR = CV_DIR / DEFAULT_CV_CATEGORY
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Classe les CVs ENGINEERING face à l'annonce par défaut via le sliding window ranker (LLM Claude)."
+        description="Classe les CVs ENGINEERING face à l'annonce par défaut via le sliding window ranker (LLM, modèle défini dans config.py)."
     )
     parser.add_argument("--limit", type=int, default=5, help="Nombre maximum de CVs à traiter (0 = tous)")
     parser.add_argument("--window-size", type=int, default=4, help="Nombre de CVs comparés par appel LLM")
     parser.add_argument("--passes", type=int, default=3, help="Nombre maximum de passes")
+    parser.add_argument(
+        "--model", type=str, default=SLIDING_WINDOW_MODEL,
+        help="Identifiant du modèle (fournisseur déduit du préfixe : Claude ou Mistral)",
+    )
     args = parser.parse_args()
 
     limit = args.limit if args.limit > 0 else None
 
     print("Initialisation du ranker...")
-    ranker = SlidingWindowCVRanker(window_size=args.window_size, num_passes=args.passes)
+    ranker = SlidingWindowCVRanker(window_size=args.window_size, num_passes=args.passes, model=args.model)
     ranker.import_model()
 
     print("Extraction du texte de l'annonce...")

@@ -8,7 +8,8 @@ from ats_system.generators import SyntheticCVGenerator
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Génère des CVs synthétiques (PDF) face à une annonce via l'API Mistral. "
+        description="Génère des CVs synthétiques (PDF) face à une annonce via un LLM "
+        "(Mistral ou Claude, selon le modèle de config.py). "
         "Chaque CV cible un niveau de profil discret (du candidat idéal au hors-sujet) ; "
         "un manifest.json de vérité-terrain accompagne les CVs."
     )
@@ -20,7 +21,8 @@ def main():
         help="Chemin du PDF de l'annonce (défaut : annonce par défaut du projet)",
     )
     parser.add_argument(
-        "--model", type=str, default=CV_GENERATOR_MODEL, help="Identifiant du modèle Mistral"
+        "--model", type=str, default=CV_GENERATOR_MODEL,
+        help="Identifiant du modèle (fournisseur déduit du préfixe : Mistral ou Claude)",
     )
     parser.add_argument(
         "--temperature", type=float, default=0.7, help="Température d'échantillonnage du modèle"
@@ -42,7 +44,7 @@ def main():
     print("Extraction du texte de l'annonce...")
     announcement = import_pdf(str(Path(args.announcement)))
 
-    print("Initialisation du générateur Mistral...")
+    print("Initialisation du générateur...")
     generator = SyntheticCVGenerator(model=args.model, temperature=args.temperature)
     generator.import_model()
 

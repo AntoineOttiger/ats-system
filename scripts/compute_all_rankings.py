@@ -4,7 +4,7 @@ Méthodes comparées :
   - baseline_keyword_match : mots-clés (regex + stopwords FR/EN)
   - ml6_keyword_match       : mots-clés (modèle ml6team)
   - embedding_cosine        : similarité cosinus (all-MiniLM-L6-v2)
-  - sliding_window_ranking  : classement LLM par fenêtre glissante (Claude)
+  - sliding_window_ranking  : classement LLM par fenêtre glissante (Claude ou Mistral)
 
 Chaque run crée un dossier horodaté ``results/all_rankings_<timestamp>/`` contenant
 un fichier JSON par méthode (schéma commun de ``ats_system.results_io``).
@@ -114,8 +114,8 @@ def main():
     out = save_results("embedding_cosine", build_ranking(scored), params, results_dir=run_dir)
     print(f"  -> {out}")
 
-    # --- 4. Fenêtre glissante (LLM Claude) ---
-    print("\n[4/4] Fenêtre glissante (appels LLM Claude)...")
+    # --- 4. Fenêtre glissante (LLM) ---
+    print("\n[4/4] Fenêtre glissante (appels LLM)...")
     ranker = SlidingWindowCVRanker(window_size=args.window_size, num_passes=args.passes)
     ranker.import_model()
     cv_objs = ranker.load_cvs(cvs)

@@ -39,10 +39,16 @@ LLM (Claude) en fenêtre glissante.
 - **`config.py`** — chemins et constantes (`PROJECT_ROOT`, `DATA_DIR`,
   `ANNOUNCEMENTS_DIR`, `CV_DIR`, `RESULTS_DIR`, `DEFAULT_ANNOUNCEMENT`,
   `DEFAULT_CV_CATEGORY` = `"ENGINEERING"`, `DEFAULT_CV`,
-  `SLIDING_WINDOW_MODEL` = `"claude-haiku-4-5"` — modèle Claude du ranker,
+  `SLIDING_WINDOW_MODEL` = `"claude-haiku-4-5"` — modèle du ranker,
   `GENERATED_DATA_DIR`, `CV_GENERATOR_MODEL` = `"mistral-small-latest"` — modèle
-  Mistral du générateur de CVs, `CV_OPTIMIZER_MODEL` = `"mistral-small-latest"` —
-  modèle Mistral de l'agent d'optimisation).
+  du générateur de CVs, `CV_OPTIMIZER_MODEL` = `"mistral-small-latest"` —
+  modèle Mistral de l'agent d'optimisation). Pour `SLIDING_WINDOW_MODEL` et
+  `CV_GENERATOR_MODEL`, le **fournisseur** (Claude ou Mistral) est déduit du préfixe
+  du nom de modèle (cf. `llm.py`) : changer la valeur suffit à basculer.
+- **`llm.py`** — abstraction multi-fournisseurs partagée par le ranker et le
+  générateur. `detect_provider()` (préfixe `claude-*` → Anthropic, sinon Mistral) et
+  `LLMClient` (`import_model()` charge le bon SDK / la bonne clé, `complete()` fait une
+  complétion texte simple et renvoie le texte, quel que soit le fournisseur).
 - **`data/pdf_loader.py`** — `import_pdf()` : PDF → `{"id", "content"}` (via `pypdf`).
   Réexporté par `ats_system.data`.
 - **`results_io.py`** — schéma commun de sauvegarde des classements :
@@ -61,13 +67,15 @@ LLM (Claude) en fenêtre glissante.
   - `embedding_cosine.py` — `EmbeddingCosineScorer` : similarité cosinus offre/CV
     (0–100) via `SentenceTransformer` `all-MiniLM-L6-v2`. `import_model()`, `score()`.
   - `sliding_window_ranker.py` — `SlidingWindowCVRanker` : classement par fenêtre
-    glissante (inspiré de RankGPT) via Claude (modèle `SLIDING_WINDOW_MODEL` de
-    `config.py`, SDK `anthropic`). Entrées : `import_model()`, `load_cvs()`,
+    glissante (inspiré de RankGPT) via un LLM (modèle `SLIDING_WINDOW_MODEL` de
+    `config.py` ; fournisseur Claude **ou** Mistral déduit du préfixe, appelé via
+    `LLMClient` de `llm.py`). Entrées : `import_model()`, `load_cvs()`,
     `run_sliding_window_ranking()` → `RankingResult`, `display_results()`.
 - **`generators/`** (réexporté par `ats_system.generators`) :
   - `synthetic_cv_generator.py` — `SyntheticCVGenerator` : génère des CVs
-    synthétiques PDF face à une annonce via l'API Mistral (modèle `CV_GENERATOR_MODEL`,
-    SDK `mistralai`). La proximité CV/annonce est pilotée par des niveaux de profil
+    synthétiques PDF face à une annonce via un LLM (modèle `CV_GENERATOR_MODEL` ;
+    fournisseur Mistral **ou** Claude déduit du préfixe, appelé via `LLMClient` de
+    `llm.py`). La proximité CV/annonce est pilotée par des niveaux de profil
     discrets (`PROFILE_LEVELS` : `perfect`, `strong`, `partial`, `unrelated`, avec
     `rank` de vérité-terrain). `generate_cvs()` produit en plus, par défaut, **un CV
     « à optimiser »** (`to_optimize`, `rank` 0, marqué `optimize: true` dans le

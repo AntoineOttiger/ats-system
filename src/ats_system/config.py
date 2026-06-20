@@ -31,6 +31,12 @@ CV_GENERATOR_MODEL = "mistral-small-latest"
 # Modèle Mistral utilisé par le CVOptimizerAgent (agent d'optimisation de CV, LangGraph)
 CV_OPTIMIZER_MODEL = "mistral-small-latest"
 
+# Ranker utilisé par l'outil de feedback du CVOptimizerAgent (signal de rang du CV).
+# Clés possibles : "sliding_window" (LLM, défaut), "baseline_keyword", "ml6_keyword",
+# "embedding_cosine" — cf. CV_OPTIMIZER_RANKERS dans agents/dataset_rankers.py.
+# Changer la valeur suffit à basculer la méthode de classement du dataset.
+CV_OPTIMIZER_RANKER = "ml6_keyword"
+
 # Débit cible par défaut des appels LLM (requêtes/seconde) pour éviter les 429 de
 # l'API. Calibré sur le free tier Mistral (~1 req/s) ; à augmenter sur un tier payant.
 LLM_REQUESTS_PER_SECOND = 1.0

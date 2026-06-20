@@ -45,7 +45,10 @@ LLM (Claude **ou** Mistral, fournisseur déduit du nom de modèle) en fenêtre g
   `SLIDING_WINDOW_MODEL` = `"mistral-small-latest"` — modèle du ranker,
   `GENERATED_DATA_DIR`, `CV_GENERATOR_MODEL` = `"mistral-small-latest"` — modèle
   du générateur de CVs, `CV_OPTIMIZER_MODEL` = `"mistral-small-latest"` —
-  modèle Mistral de l'agent d'optimisation). Pour `SLIDING_WINDOW_MODEL` et
+  modèle Mistral de l'agent d'optimisation, `CV_OPTIMIZER_RANKER` = `"sliding_window"` —
+  méthode de classement du dataset utilisée par l'outil de feedback de l'agent
+  d'optimisation, parmi les clés de `CV_OPTIMIZER_RANKERS` : `"sliding_window"`,
+  `"baseline_keyword"`, `"ml6_keyword"`, `"embedding_cosine"`). Pour `SLIDING_WINDOW_MODEL` et
   `CV_GENERATOR_MODEL`, le **fournisseur** (Claude ou Mistral) est déduit du préfixe
   du nom de modèle (cf. `llm.py`) : changer la valeur suffit à basculer (ex.
   `"claude-haiku-4-5"` pour repasser le ranker sur Claude).
@@ -97,15 +100,22 @@ LLM (Claude **ou** Mistral, fournisseur déduit du nom de modèle) en fenêtre g
     autres CVs d'un dataset synthétique, **sans inventer** de qualifications (reformulation /
     mise en valeur de la substance réelle face à l'annonce). L'agent reçoit l'annonce complète
     et **décide seul** comment réécrire le CV. Le signal de feedback est le **rang compétitif**
-    du CV dans le dataset, jugé holistiquement par un LLM via `SlidingWindowCVRanker` (fenêtre
-    glissante) face à l'annonce. Unique outil exposé : `rank_cv_in_dataset(cv_text)` (rang +
-    classement complet + analyse du recruteur). ⚠️ Coûteux : chaque appel d'outil relance un
-    classement LLM complet du dataset. Convention `import_model()` (charge le LLM Mistral, le
-    ranker fenêtre glissante et met en cache les CVs concurrents) puis `stream()` (trace des
-    « pensées ») / `optimize()` → texte du CV optimisé. Nécessite `MISTRAL_API_KEY` (agent ;
-    couvre aussi le ranker tant que `SLIDING_WINDOW_MODEL` reste sur Mistral). Si
-    `SLIDING_WINDOW_MODEL` est basculé sur Claude, `ANTHROPIC_API_KEY` est requise en plus
-    (ranker).
+    du CV dans le dataset, calculé par la méthode choisie via `CV_OPTIMIZER_RANKER` (cf.
+    `dataset_rankers.py`) face à l'annonce. Unique outil exposé : `rank_cv_in_dataset(cv_text)`
+    (rang + classement complet + analyse de ce CV). ⚠️ Avec le ranker par défaut
+    `sliding_window`, chaque appel d'outil relance un classement LLM complet du dataset (coûteux) ;
+    les rankers mots-clés/embeddings sont locaux et gratuits. Convention `import_model()` (charge
+    le LLM Mistral, le ranker du dataset et met en cache les CVs concurrents) puis `stream()`
+    (trace des « pensées ») / `optimize()` → texte du CV optimisé. Nécessite `MISTRAL_API_KEY`
+    (agent ; couvre aussi le ranker `sliding_window` tant que `SLIDING_WINDOW_MODEL` reste sur
+    Mistral). Si `SLIDING_WINDOW_MODEL` est basculé sur Claude, `ANTHROPIC_API_KEY` est requise
+    en plus (ranker).
+  - `dataset_rankers.py` — couche d'adaptation : enveloppe chaque système de `systems/` derrière
+    l'interface commune `DatasetRanker` (`import_model()` puis `rank()` → `DatasetRankResult` :
+    rang du candidat parmi les concurrents + classement + analyse riche). Registre
+    `CV_OPTIMIZER_RANKERS` + factory `build_dataset_ranker(name, ...)` pilotés par
+    `CV_OPTIMIZER_RANKER`. Les rankers mots-clés/embeddings transforment des scores par CV en rang
+    (tri décroissant) ; seul `sliding_window` (LLM) utilise le limiteur de débit.
 
 ### `scripts/` — points d'entrée (`python scripts/<nom>.py`)
 

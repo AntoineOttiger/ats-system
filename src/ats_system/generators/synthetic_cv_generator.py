@@ -18,10 +18,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fpdf import FPDF
-from fpdf.enums import XPos, YPos
-
 from ats_system.config import CV_GENERATOR_MODEL, GENERATED_DATA_DIR
+from ats_system.data import write_text_pdf
 from ats_system.llm import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -205,8 +203,9 @@ class SyntheticCVGenerator:
         output_dir: Path = GENERATED_DATA_DIR,
         include_optimize: bool = True,
         optimize_instruction: Optional[str] = None,
-    ) -> Path:
-        """Génère ``n`` CVs, les sauvegarde en PDF et écrit un manifest de vérité-terrain.
+        save: bool = True,
+    ):
+        """Génère ``n`` CVs ; si ``save``, les écrit en PDF avec un manifest de vérité-terrain.
 
         Les ``n`` CVs se voient assigner un niveau de profil en **cyclant** sur la liste
         des niveaux retenus (distribution équilibrée). Si ``include_optimize`` est vrai,
@@ -224,9 +223,13 @@ class SyntheticCVGenerator:
             include_optimize:     Si vrai, génère en plus un CV « à optimiser ».
             optimize_instruction: Consigne personnalisée du CV « à optimiser ».
                                   Défaut : ``DEFAULT_OPTIMIZE_INSTRUCTION``.
+            save:                 Si vrai, écrit les PDF + ``manifest.json`` et retourne le
+                                  ``Path`` du dossier. Sinon, n'écrit rien et retourne la liste
+                                  des CVs générés en mémoire (dicts ``{"file", "level",
+                                  "level_rank", "text"[, "optimize"]}``).
 
         Returns:
-            Le ``Path`` du dossier de sortie créé.
+            Le ``Path`` du dossier de sortie (si ``save``), sinon la liste des CVs générés.
         """
         if self._llm is None:
             raise RuntimeError("Appelez import_model() avant de générer des CVs.")
@@ -234,19 +237,20 @@ class SyntheticCVGenerator:
             raise ValueError("Il faut générer au moins 1 CV.")
 
         selected = self._resolve_levels(levels)
-        run_dir = self._make_run_dir(output_dir, run_name)
+        run_dir = self._make_run_dir(output_dir, run_name) if save else None
 
-        manifest_cvs: list[dict] = []
+        generated: list[dict] = []
         for i in range(n):
             level = selected[i % len(selected)]
             logger.info("Génération du CV %d/%d (niveau : %s)", i + 1, n, level.name)
             text = self.generate_cv(announcement, level)
 
             file_name = f"cv_{i + 1:03d}_{level.name}.pdf"
-            self._write_pdf(text, run_dir / file_name)
-            manifest_cvs.append(
-                {"file": file_name, "level": level.name, "level_rank": level.rank}
+            generated.append(
+                {"file": file_name, "level": level.name, "level_rank": level.rank, "text": text}
             )
+            if save:
+                write_text_pdf(text, run_dir / file_name)
 
         if include_optimize:
             opt_level = _optimize_level(optimize_instruction)
@@ -254,15 +258,21 @@ class SyntheticCVGenerator:
             text = self.generate_cv(announcement, opt_level)
 
             file_name = f"cv_{n + 1:03d}_{opt_level.name}.pdf"
-            self._write_pdf(text, run_dir / file_name)
-            manifest_cvs.append(
+            generated.append(
                 {
                     "file": file_name,
                     "level": opt_level.name,
                     "level_rank": opt_level.rank,
+                    "text": text,
                     "optimize": True,
                 }
             )
+            if save:
+                write_text_pdf(text, run_dir / file_name)
+
+        if not save:
+            logger.info("%d CVs générés (non sauvegardés)", len(generated))
+            return generated
 
         manifest = {
             "generator": "synthetic_cv_generator",
@@ -278,13 +288,14 @@ class SyntheticCVGenerator:
                     _optimize_level(optimize_instruction).instruction if include_optimize else None
                 ),
             },
-            "cvs": manifest_cvs,
+            # Le manifest ne référence que les métadonnées des fichiers (pas le texte brut).
+            "cvs": [{k: v for k, v in cv.items() if k != "text"} for cv in generated],
         }
         (run_dir / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-        logger.info("%d CVs générés dans %s", len(manifest_cvs), run_dir)
+        logger.info("%d CVs générés dans %s", len(generated), run_dir)
         return run_dir
 
     # ------------------------------------------------------------------
@@ -346,42 +357,5 @@ experience (with dates and descriptions), Education, Skills, Languages.
 - Stay consistent with the level of match requested above.
 - Do not add any comment or explanation outside the resume: return only the resume text."""
 
-    @staticmethod
-    def _sanitize(text: str) -> str:
-        """Remplace la ponctuation typographique unicode par des équivalents ASCII.
-
-        La police core Helvetica de fpdf2 n'accepte que le latin-1 (qui couvre les
-        accents français) ; on convertit donc puces, tirets et guillemets typographiques.
-        """
-        replacements = {
-            "•": "-",   # •
-            "‣": "-",   # ‣
-            "◦": "-",   # ◦
-            "–": "-",   # –
-            "—": "-",   # —
-            "‘": "'",   # ‘
-            "’": "'",   # ’
-            "“": '"',   # “
-            "”": '"',   # ”
-            "…": "...",  # …
-            " ": " ",   # espace insécable
-        }
-        for src, dst in replacements.items():
-            text = text.replace(src, dst)
-        return text
-
-    def _write_pdf(self, text: str, path: Path) -> None:
-        """Écrit le texte d'un CV dans un PDF (police Helvetica, encodage latin-1)."""
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.add_page()
-        pdf.set_font("Helvetica", size=11)
-
-        safe = self._sanitize(text).encode("latin-1", errors="replace").decode("latin-1")
-        for line in safe.split("\n"):
-            # multi_cell gère le retour à la ligne ; une ligne vide marque un saut.
-            # new_x=LMARGIN / new_y=NEXT : ramène le curseur à la marge gauche et
-            # passe à la ligne suivante (sinon la cellule suivante n'a plus de largeur).
-            pdf.multi_cell(0, 6, line if line else " ", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-
-        pdf.output(str(path))
+    # La conversion texte → PDF (police Helvetica, latin-1) vit désormais dans
+    # ``ats_system.data.pdf_writer.write_text_pdf`` (mutualisée avec l'agent).

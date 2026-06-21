@@ -24,11 +24,13 @@ sont locaux et n'engendrent aucun coût d'API.
 import json
 import logging
 import os
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator, Optional
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.tools import tool
 from langchain_mistralai import ChatMistralAI
@@ -36,9 +38,15 @@ from langgraph.prebuilt import create_react_agent
 
 from ats_system.agents.dataset_rankers import DatasetRanker, build_dataset_ranker
 from ats_system.config import CV_OPTIMIZER_MODEL, CV_OPTIMIZER_RANKER, LLM_REQUESTS_PER_SECOND
-from ats_system.data import import_pdf
+from ats_system.data import import_pdf, write_text_pdf
+from ats_system.results_io import timestamped_run_dir
 
 logger = logging.getLogger(__name__)
+
+METHOD = "cv_optimizer"
+
+# Extrait "Rang du CV optimisé : X/Y" des observations de l'outil (pour le méta).
+_RANK_RE = re.compile(r"Rang du CV optimisé\s*:\s*(\d+)\s*/\s*(\d+)")
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +96,7 @@ class CVOptimizerAgent:
         self,
         dataset_dir: Path,
         announcement_text: str,
+        announcement_name: Optional[str] = None,
         model: str = CV_OPTIMIZER_MODEL,
         temperature: float = 0.4,
         max_iterations: int = 20,
@@ -102,6 +111,7 @@ class CVOptimizerAgent:
             dataset_dir:         Dossier d'un dataset synthétique (``synthetic_cvs_<...>/``)
                                  contenant les CVs concurrents et un ``manifest.json``.
             announcement_text:   Texte complet de l'annonce visée.
+            announcement_name:   Nom de l'annonce (pour le méta de sauvegarde). Optionnel.
             model:               Identifiant du modèle Mistral. Défaut : ``CV_OPTIMIZER_MODEL``.
             temperature:         Température d'échantillonnage du modèle.
             max_iterations:      Limite de récursion du graphe (``recursion_limit``) — borne le
@@ -116,6 +126,7 @@ class CVOptimizerAgent:
         """
         self.dataset_dir = Path(dataset_dir)
         self.announcement_text = announcement_text
+        self.announcement_name = announcement_name
         self.model = model
         self.temperature = temperature
         self.max_iterations = max_iterations
@@ -245,9 +256,119 @@ class CVOptimizerAgent:
                 return message.content if isinstance(message.content, str) else str(message.content)
         return ""
 
+    def run(self, save: bool = True) -> str:
+        """Pipeline complet : localise le CV à optimiser, l'optimise (en streamant ses pensées), sauvegarde.
+
+        Le CV « à optimiser » du dataset (entrée ``optimize: true`` du manifest) est repéré
+        automatiquement. Les étapes de l'agent (pensées, appels d'outils, observations de rang)
+        sont affichées au fil de l'eau et collectées dans une trace. Si ``save``, écrit un PDF du
+        CV optimisé + un ``meta.json`` (dataset, annonce, modèle, ranker, trace, rang
+        initial/final) sous ``results/cv_optimizer/<horodatage>/``.
+
+        Args:
+            save: Si vrai, écrit le PDF du CV optimisé et le méta JSON.
+
+        Returns:
+            Le texte du CV optimisé final.
+        """
+        if self._agent is None:
+            raise RuntimeError("Appelez import_model() avant de lancer l'agent.")
+
+        cv_file, cv_text = self._find_optimize_cv()
+        print(f"CV à optimiser : {cv_file}")
+
+        print("\n" + "=" * 70)
+        print("PENSÉES DE L'AGENT")
+        print("=" * 70)
+        trace: list[dict] = []
+        final_cv = ""
+        for update in self.stream(cv_text):
+            content = self._record_step(update, trace)
+            if content:
+                final_cv = content
+
+        print("\n" + "=" * 70)
+        print("CV OPTIMISÉ FINAL")
+        print("=" * 70)
+        print(final_cv)
+
+        if save:
+            self._save_run(cv_file, final_cv, trace)
+        return final_cv
+
     # ------------------------------------------------------------------
     # Helpers internes
     # ------------------------------------------------------------------
+
+    def _find_optimize_cv(self) -> tuple[str, str]:
+        """Localise le CV « à optimiser » (entrée ``optimize: true``) → ``(nom_fichier, texte)``."""
+        manifest = json.loads((self.dataset_dir / "manifest.json").read_text(encoding="utf-8"))
+        for entry in manifest["cvs"]:
+            if entry.get("optimize"):
+                cv_path = self.dataset_dir / entry["file"]
+                return entry["file"], import_pdf(str(cv_path))["content"]
+        raise ValueError(f"Aucun CV « à optimiser » (optimize: true) dans {self.dataset_dir}.")
+
+    @staticmethod
+    def _record_step(update: dict, trace: list[dict]) -> str:
+        """Affiche les messages d'une étape du graphe et les ajoute à ``trace``.
+
+        Retourne le dernier contenu d'``AIMessage`` (candidat au CV optimisé final).
+        """
+        last_ai_content = ""
+        for node, payload in update.items():
+            for message in payload.get("messages", []):
+                if isinstance(message, AIMessage):
+                    if message.content:
+                        content = message.content if isinstance(message.content, str) else str(message.content)
+                        print(f"\n[PENSEE - {node}] Raisonnement :\n{content}")
+                        trace.append({"type": "thought", "node": node, "content": content})
+                        last_ai_content = content
+                    for call in message.tool_calls or []:
+                        shown = {
+                            k: (v[:120] + "..." if isinstance(v, str) and len(v) > 120 else v)
+                            for k, v in call["args"].items()
+                        }
+                        print(f"\n[OUTIL - {node}] Appel -> {call['name']}({shown})")
+                        trace.append({"type": "tool_call", "node": node, "tool": call["name"], "args": call["args"]})
+                elif isinstance(message, ToolMessage):
+                    print(f"\n[OBSERVATION - {node}] ({message.name}) :\n{message.content}")
+                    trace.append({"type": "observation", "node": node, "tool": message.name, "content": message.content})
+        return last_ai_content
+
+    def _save_run(self, cv_file: str, optimized_text: str, trace: list[dict]) -> Path:
+        """Écrit le PDF du CV optimisé + un ``meta.json`` sous ``results/cv_optimizer/<horodatage>/``."""
+        run_dir = timestamped_run_dir(METHOD)
+        write_text_pdf(optimized_text, run_dir / "cv_optimise.pdf")
+
+        # Rangs successifs observés (du premier au dernier appel d'outil) : 1er = initial, dernier = final.
+        ranks = [
+            (int(m.group(1)), int(m.group(2)))
+            for entry in trace
+            if entry["type"] == "observation"
+            for m in [_RANK_RE.search(str(entry.get("content", "")))]
+            if m
+        ]
+        meta = {
+            "agent": "cv_optimizer_agent",
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "dataset": self.dataset_dir.name,
+            "announcement": self.announcement_name,
+            "model": self.model,
+            "ranker": self.ranker_name,
+            "cv_optimise_source": cv_file,
+            "num_competitors": len(self._competitor_cvs),
+            "rang_initial": ranks[0][0] if ranks else None,
+            "rang_final": ranks[-1][0] if ranks else None,
+            "total": ranks[-1][1] if ranks else None,
+            "trace": trace,
+            "cv_optimise_text": optimized_text,
+        }
+        (run_dir / "meta.json").write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        print(f"\nRésultats sauvegardés dans : {run_dir}")
+        return run_dir
 
     def _load_dataset_competitors(self) -> list[dict]:
         """Lit les CVs concurrents du dataset (dicts ``{"id", "content"}`` pour ``load_cvs``).

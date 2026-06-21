@@ -4,9 +4,17 @@ L'offre et le CV sont encodés par le modèle ``all-MiniLM-L6-v2`` ; le score es
 similarité cosinus ramenée sur une échelle 0–100.
 """
 
+from pathlib import Path
+from typing import Optional
+
 from sentence_transformers import SentenceTransformer, util
 
+from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV_CATEGORY
+from ats_system.data import load_announcement, load_cvs
+from ats_system.results_io import build_ranking, save_results, timestamped_run_dir
+
 MODEL_NAME = "all-MiniLM-L6-v2"
+METHOD = "embedding_cosine"
 
 
 class EmbeddingCosineScorer:
@@ -26,3 +34,55 @@ class EmbeddingCosineScorer:
         embeddings = self.model.encode([offre, cv], convert_to_tensor=True)
         sim = util.cos_sim(embeddings[0], embeddings[1]).item()
         return round(sim * 100, 1)
+
+    def score_cvs(self, offre_text: str, cvs: list[dict]) -> list[tuple[str, float]]:
+        """Score chaque CV face à l'offre → paires ``(cv_id, score)`` triées décroissant."""
+        scored = [(cv["id"], self.score(offre_text, cv["content"])) for cv in cvs]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return scored
+
+    def run(
+        self,
+        *,
+        limit: Optional[int] = None,
+        announcement: Path = DEFAULT_ANNOUNCEMENT,
+        category: str = DEFAULT_CV_CATEGORY,
+        save: bool = True,
+    ) -> list[tuple[str, float]]:
+        """Pipeline complet : chargement du modèle, des données, scoring et sauvegarde.
+
+        Args:
+            limit:        Nombre maximum de CVs à traiter (``None``/``0`` = tous).
+            announcement: PDF de l'annonce (défaut : annonce par défaut du projet).
+            category:     Catégorie de CVs (sous-dossier de ``CV_DIR``).
+            save:         Si vrai, écrit le classement sous ``results/<METHOD>/<horodatage>/``.
+
+        Returns:
+            Le classement, paires ``(cv_id, score)`` triées décroissant.
+        """
+        print("Chargement du modèle...")
+        self.import_model()
+        offre = load_announcement(announcement)
+        cvs = load_cvs(category, limit)
+        scored = self.score_cvs(offre["content"], cvs)
+
+        for cv_id, score in scored:
+            print(f"{score:5.1f}%  {cv_id}")
+
+        if save:
+            params = {
+                "announcement": Path(announcement).name,
+                "category": category,
+                "model": MODEL_NAME,
+                "limit": limit if limit is not None else 0,
+                "num_cvs": len(cvs),
+            }
+            out = save_results(
+                METHOD,
+                build_ranking(scored),
+                params,
+                results_dir=timestamped_run_dir(METHOD),
+                stamp_filename=False,
+            )
+            print(f"\nRésultats sauvegardés dans : {out}")
+        return scored

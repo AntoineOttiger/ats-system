@@ -10,15 +10,20 @@ Mistral) est déduit du préfixe du modèle (cf. ``SLIDING_WINDOW_MODEL`` dans
 import json
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from ats_system.config import SLIDING_WINDOW_MODEL
+from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV_CATEGORY, SLIDING_WINDOW_MODEL
+from ats_system.data import load_announcement, load_cvs
 from ats_system.llm import LLMClient
+from ats_system.results_io import build_ranking, save_results, timestamped_run_dir
 
 if TYPE_CHECKING:
     from langchain_core.rate_limiters import BaseRateLimiter
 
 logger = logging.getLogger(__name__)
+
+METHOD = "sliding_window_ranking"
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +183,58 @@ class SlidingWindowCVRanker:
             pass_orders=pass_orders,
             pass_justifications=pass_justifications,
         )
+
+    def run(
+        self,
+        *,
+        limit: Optional[int] = None,
+        announcement: Path = DEFAULT_ANNOUNCEMENT,
+        category: str = DEFAULT_CV_CATEGORY,
+        save: bool = True,
+    ) -> RankingResult:
+        """Pipeline complet : chargement du modèle, des données, classement et sauvegarde.
+
+        Args:
+            limit:        Nombre maximum de CVs à classer (``None``/``0`` = tous).
+            announcement: PDF de l'annonce (défaut : annonce par défaut du projet).
+            category:     Catégorie de CVs (sous-dossier de ``CV_DIR``).
+            save:         Si vrai, écrit le classement sous ``results/<METHOD>/<horodatage>/``.
+
+        Returns:
+            Le ``RankingResult`` complet (classement + historique par passe).
+        """
+        print("Initialisation du ranker...")
+        self.import_model()
+        offre = load_announcement(announcement)
+        cvs = load_cvs(category, limit)
+
+        print(f"Classement de {len(cvs)} CVs en cours (appels LLM)...")
+        cv_objs = self.load_cvs(cvs)
+        result = self.run_sliding_window_ranking(job_offer=offre["content"], cvs=cv_objs)
+
+        self.display_results(result)
+
+        if save:
+            params = {
+                "announcement": Path(announcement).name,
+                "category": category,
+                "model": self.model,
+                "limit": limit if limit is not None else 0,
+                "window_size": self.window_size,
+                "passes": self.num_passes,
+                "num_cvs": len(cvs),
+            }
+            scored = [(cv.id, result.scores[cv.id]) for cv in result.ranked_cvs]
+            out = save_results(
+                METHOD,
+                build_ranking(scored, result.justifications),
+                params,
+                extra={"passes": result.passes, "converged": result.converged},
+                results_dir=timestamped_run_dir(METHOD),
+                stamp_filename=False,
+            )
+            print(f"\nRésultats sauvegardés dans : {out}")
+        return result
 
     def display_results(self, result: RankingResult) -> None:
         """Affiche le classement de façon lisible."""

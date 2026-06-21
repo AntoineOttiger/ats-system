@@ -39,6 +39,10 @@ def main():
         help="Consigne personnalisée pour le CV « à optimiser » (candidat excellent sur le "
         "fond mais au vocabulaire non aligné avec l'annonce). Défaut : consigne intégrée.",
     )
+    parser.add_argument(
+        "--save", action=argparse.BooleanOptionalAction, default=True,
+        help="Écrire les PDF + manifest (--no-save : génère en mémoire sans rien écrire)",
+    )
     args = parser.parse_args()
 
     print("Extraction du texte de l'annonce...")
@@ -50,14 +54,18 @@ def main():
 
     optimize_msg = "" if args.no_optimize else " + 1 CV « à optimiser »"
     print(f"Génération de {args.count} CVs synthétiques{optimize_msg} (appels LLM)...")
-    run_dir = generator.generate_cvs(
+    result = generator.generate_cvs(
         announcement["content"],
         n=args.count,
         include_optimize=not args.no_optimize,
         optimize_instruction=args.optimize_prompt,
+        save=args.save,
     )
 
-    print(f"\nCVs générés dans : {run_dir}")
+    if args.save:
+        print(f"\nCVs générés dans : {result}")
+    else:
+        print(f"\n{len(result)} CVs générés (non sauvegardés).")
 
 
 if __name__ == "__main__":

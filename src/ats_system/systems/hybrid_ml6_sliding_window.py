@@ -16,9 +16,17 @@ deux systèmes sous-jacents) puis ``rank()`` (inférence).
 
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from ats_system.config import SLIDING_WINDOW_MODEL
+from ats_system.config import (
+    DEFAULT_ANNOUNCEMENT,
+    DEFAULT_CV_CATEGORY,
+    ML6_KEYWORD_MODEL,
+    SLIDING_WINDOW_MODEL,
+)
+from ats_system.data import load_announcement, load_cvs
+from ats_system.results_io import build_ranking, save_results, timestamped_run_dir
 from ats_system.systems.ml6_keyword_match import Ml6KeywordMatcher
 from ats_system.systems.sliding_window_ranker import RankingResult, SlidingWindowCVRanker
 
@@ -26,6 +34,14 @@ if TYPE_CHECKING:
     from langchain_core.rate_limiters import BaseRateLimiter
 
 logger = logging.getLogger(__name__)
+
+METHOD = "hybrid_ranking"
+
+
+def _position_scored(order: list[str]) -> list[tuple[str, float]]:
+    """Convertit un ordre de cv_ids en paires ``(cv_id, score)`` basées sur la position."""
+    n = len(order)
+    return [(cv_id, round((n - i) / n, 4)) for i, cv_id in enumerate(order)]
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +159,112 @@ class HybridMl6SlidingWindowRanker:
             sliding_window=sw_result,
             ml6_scores=ml6_scores,
         )
+
+    def run(
+        self,
+        *,
+        limit: Optional[int] = None,
+        announcement: Path = DEFAULT_ANNOUNCEMENT,
+        category: str = DEFAULT_CV_CATEGORY,
+        save: bool = True,
+    ) -> HybridRankingResult:
+        """Pipeline complet : chargement, classement hybride et sauvegarde de l'historique.
+
+        Si ``save``, écrit tout l'historique sous ``results/<METHOD>/<horodatage>/`` :
+        présélection mots-clés (``ml6_keyword_match.json``), classement après chaque passe
+        de la fenêtre glissante (``sliding_window_pass{N}.json``) et classement final
+        (``hybrid_ranking.json``).
+
+        Args:
+            limit:        Nombre maximum de CVs à classer (``None``/``0`` = tous).
+            announcement: PDF de l'annonce (défaut : annonce par défaut du projet).
+            category:     Catégorie de CVs (sous-dossier de ``CV_DIR``).
+            save:         Si vrai, écrit tout l'historique de classement.
+
+        Returns:
+            Le ``HybridRankingResult`` (classement final + historique des étapes).
+        """
+        print("Initialisation du système hybride (chargement des modèles)...")
+        self.import_model()
+        offre = load_announcement(announcement)
+        cvs = load_cvs(category, limit)
+
+        print(f"Classement de {len(cvs)} CVs (passe mots-clés puis appels LLM)...")
+        result = self.rank(job_offer=offre["content"], cvs=cvs)
+
+        self.display_results(result)
+
+        if save:
+            self._save_history(result, announcement, category, limit, len(cvs))
+        return result
+
+    def _save_history(
+        self,
+        result: HybridRankingResult,
+        announcement: Path,
+        category: str,
+        limit: Optional[int],
+        num_cvs: int,
+    ) -> None:
+        """Écrit prescan ml6 + passes de la fenêtre glissante + classement final."""
+        run_dir = timestamped_run_dir(METHOD)
+        base_params = {
+            "announcement": Path(announcement).name,
+            "category": category,
+            "limit": limit if limit is not None else 0,
+            "num_cvs": num_cvs,
+        }
+        window_size = self._ranker.window_size
+        num_passes = self._ranker.num_passes
+
+        # --- 1. Première passe : mots-clés ml6 (présélection) ---
+        save_results(
+            "ml6_keyword_match",
+            build_ranking(result.ml6_ranking),
+            {**base_params, "model": ML6_KEYWORD_MODEL, "stage": "preselection"},
+            results_dir=run_dir,
+            stamp_filename=False,
+        )
+
+        # --- 2. Chaque passe de la fenêtre glissante ---
+        sw = result.sliding_window
+        if sw is not None:
+            for i, (order, justifs) in enumerate(zip(sw.pass_orders, sw.pass_justifications), 1):
+                save_results(
+                    f"sliding_window_pass{i}",
+                    build_ranking(_position_scored(order), justifs),
+                    {
+                        **base_params,
+                        "model": self.model,
+                        "stage": "refinement",
+                        "pass": i,
+                        "window_size": window_size,
+                    },
+                    results_dir=run_dir,
+                    stamp_filename=False,
+                )
+
+        # --- 3. Classement final ---
+        out_path = save_results(
+            METHOD,
+            build_ranking(result.ranked, result.justifications),
+            {
+                **base_params,
+                "model": self.model,
+                "ml6_model": ML6_KEYWORD_MODEL,
+                "window_size": window_size,
+                "passes": num_passes,
+            },
+            extra={
+                "passes": sw.passes if sw is not None else 0,
+                "converged": sw.converged if sw is not None else False,
+            },
+            results_dir=run_dir,
+            stamp_filename=False,
+        )
+
+        print(f"\nHistorique complet sauvegardé dans : {run_dir}")
+        print(f"Classement final : {out_path.name}")
 
     def display_results(self, result: HybridRankingResult) -> None:
         """Affiche le classement final de façon lisible."""

@@ -59,14 +59,21 @@ LLM (Claude **ou** Mistral, fournisseur déduit du nom de modèle) en fenêtre g
   modèle Mistral de l'agent d'optimisation, `CV_OPTIMIZER_RANKER` = `"sliding_window"` —
   méthode de classement du dataset utilisée par l'outil de feedback de l'agent
   d'optimisation, parmi les clés de `CV_OPTIMIZER_RANKERS` : `"sliding_window"`,
-  `"baseline_keyword"`, `"ml6_keyword"`, `"embedding_cosine"`). Pour `SLIDING_WINDOW_MODEL` et
+  `"baseline_keyword"`, `"ml6_keyword"`, `"embedding_cosine"`, `LLM_REQUESTS_PER_SECOND` =
+  `1.0` — débit cible par défaut des appels LLM (req/s) pour éviter les 429 ; calibré sur
+  le free tier Mistral (~1 req/s), à augmenter sur un tier payant). Pour `SLIDING_WINDOW_MODEL` et
   `CV_GENERATOR_MODEL`, le **fournisseur** (Claude ou Mistral) est déduit du préfixe
   du nom de modèle (cf. `llm.py`) : changer la valeur suffit à basculer (ex.
   `"claude-haiku-4-5"` pour repasser le ranker sur Claude).
 - **`llm.py`** — abstraction multi-fournisseurs partagée par le ranker et le
   générateur. `detect_provider()` (préfixe `claude-*` → Anthropic, sinon Mistral) et
   `LLMClient` (`import_model()` charge le bon SDK / la bonne clé, `complete()` fait une
-  complétion texte simple et renvoie le texte, quel que soit le fournisseur).
+  complétion texte simple et renvoie le texte, quel que soit le fournisseur). `LLMClient`
+  accepte un `rate_limiter` optionnel (`BaseRateLimiter` de `langchain_core`, **appliqué
+  aux seuls modèles Mistral** : `acquire()` avant chaque requête — partager une même
+  instance entre clients plafonne le débit global) et `max_retries` (retry sur 429 avec
+  backoff exponentiel). Ce limiteur est propagé via `SlidingWindowCVRanker`,
+  `HybridMl6SlidingWindowRanker` et les `DatasetRanker` (cf. `dataset_rankers.py`).
 - **`data/`** (réexporté par `ats_system.data`) — I/O des données :
   - `pdf_loader.py` — `import_pdf()` : PDF → `{"id", "content"}` (via `pypdf`).
   - `loaders.py` — `load_announcement(path)` et `load_cvs(category, limit)` : chargement
@@ -143,11 +150,15 @@ LLM (Claude **ou** Mistral, fournisseur déduit du nom de modèle) en fenêtre g
     mise en valeur de la substance réelle face à l'annonce). L'agent reçoit l'annonce complète
     et **décide seul** comment réécrire le CV. Le signal de feedback est le **rang compétitif**
     du CV dans le dataset, calculé par la méthode choisie via `CV_OPTIMIZER_RANKER` (cf.
-    `dataset_rankers.py`) face à l'annonce. Unique outil exposé : `rank_cv_in_dataset(cv_text)`
-    (rang + classement complet + analyse de ce CV). ⚠️ Avec le ranker par défaut
-    `sliding_window`, chaque appel d'outil relance un classement LLM complet du dataset (coûteux) ;
+    `dataset_rankers.py`) face à l'annonce — par défaut `ml6_keyword` (mots-clés ml6, local et
+    gratuit). Unique outil exposé : `rank_cv_in_dataset(cv_text)`
+    (rang + classement complet + analyse de ce CV). ⚠️ Avec le ranker `sliding_window`,
+    chaque appel d'outil relance un classement LLM complet du dataset (coûteux) ;
     les rankers mots-clés/embeddings sont locaux et gratuits. Convention `import_model()` (charge
-    le LLM Mistral, le ranker du dataset et met en cache les CVs concurrents) puis `stream()`
+    le LLM Mistral, le ranker du dataset, construit un limiteur de débit partagé
+    `InMemoryRateLimiter` — un seul token bucket plafonne **tous** les appels Mistral du
+    processus, agent + ranker `sliding_window`, à `requests_per_second` (défaut
+    `LLM_REQUESTS_PER_SECOND`) — et met en cache les CVs concurrents) puis `stream()`
     (trace des « pensées ») / `optimize()` → texte du CV optimisé. `run(save=True)` localise
     seul le CV « à optimiser » du dataset, l'optimise (en affichant la trace) et, si `save`,
     écrit le PDF du CV optimisé (`cv_optimise.pdf`) + un `meta.json` (dataset, annonce, modèle,

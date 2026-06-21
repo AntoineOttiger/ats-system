@@ -8,7 +8,9 @@ baseline : proportion des mots-clés de l'offre retrouvés dans le CV.
 
 from transformers import pipeline
 
-MODEL_NAME = "ml6team/keyphrase-extraction-kbir-inspec"
+from ats_system.config import ML6_KEYWORD_MODEL
+
+MODEL_NAME = ML6_KEYWORD_MODEL
 # BERT : max 512 tokens (~400 mots) ; on découpe le texte pour couvrir le document entier.
 CHUNK_SIZE = 400
 

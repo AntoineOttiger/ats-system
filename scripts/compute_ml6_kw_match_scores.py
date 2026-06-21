@@ -1,6 +1,6 @@
 import argparse
 
-from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY
+from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY, ML6_KEYWORD_MODEL
 from ats_system.data import import_pdf
 from ats_system.results_io import build_ranking, save_results
 from ats_system.systems import Ml6KeywordMatcher
@@ -44,7 +44,7 @@ def main():
     params = {
         "announcement": DEFAULT_ANNOUNCEMENT.name,
         "category": DEFAULT_CV_CATEGORY,
-        "model": "ml6team/keyphrase-extraction-kbir-inspec",
+        "model": ML6_KEYWORD_MODEL,
         "limit": args.limit,
         "num_cvs": len(results),
     }

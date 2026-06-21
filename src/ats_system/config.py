@@ -24,6 +24,10 @@ DEFAULT_CV = CV_DIR / DEFAULT_CV_CATEGORY / "12472574.pdf"
 # changer cette valeur pour basculer (ex. "mistral-small-latest").
 SLIDING_WINDOW_MODEL = "mistral-small-latest"
 
+# Modèle HF (BERT, token-classification) utilisé par Ml6KeywordMatcher pour
+# l'extraction de mots-clés (et comme tokenizer par les scripts count_tokens).
+ML6_KEYWORD_MODEL = "ml6team/keyphrase-extraction-kbir-inspec"
+
 # Modèle utilisé par le SyntheticCVGenerator (génération de CVs synthétiques).
 # Idem : fournisseur déduit du préfixe (ex. "claude-haiku-4-5" pour passer sur Claude).
 CV_GENERATOR_MODEL = "mistral-small-latest"

@@ -2,10 +2,10 @@ import argparse
 
 from transformers import AutoTokenizer
 
-from ats_system.config import DEFAULT_CV
+from ats_system.config import DEFAULT_CV, ML6_KEYWORD_MODEL
 from ats_system.data import import_pdf
 
-MODEL_NAME = "ml6team/keyphrase-extraction-kbir-inspec"
+MODEL_NAME = ML6_KEYWORD_MODEL
 BERT_MAX_TOKENS = 512
 
 

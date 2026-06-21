@@ -39,6 +39,10 @@ class RankingResult:
     justifications: dict[str, str]    # cv_id -> dernière justification du LLM
     passes: int                       # nombre de passes effectuées
     converged: bool
+    # Historique : pour chaque passe, l'ordre des cv_ids et un instantané des
+    # justifications connues à la fin de cette passe (du meilleur au pire).
+    pass_orders: list[list[str]] = field(default_factory=list)
+    pass_justifications: list[dict[str, str]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -143,12 +147,18 @@ class SlidingWindowCVRanker:
         justifications: dict[str, str] = {}
         prev_order: list[str] = []
         converged = False
+        pass_orders: list[list[str]] = []
+        pass_justifications: list[dict[str, str]] = []
 
         for pass_idx in range(self.num_passes):
             logger.info("Passe %d/%d", pass_idx + 1, self.num_passes)
             ranked = self._single_pass(job_offer, ranked, justifications)
 
             current_order = [cv.id for cv in ranked]
+            # Instantané de l'historique à la fin de cette passe.
+            pass_orders.append(list(current_order))
+            pass_justifications.append(dict(justifications))
+
             if current_order == prev_order:
                 logger.info("Classement convergé après %d passe(s).", pass_idx + 1)
                 converged = True
@@ -165,6 +175,8 @@ class SlidingWindowCVRanker:
             justifications=justifications,
             passes=pass_idx + 1,
             converged=converged,
+            pass_orders=pass_orders,
+            pass_justifications=pass_justifications,
         )
 
     def display_results(self, result: RankingResult) -> None:

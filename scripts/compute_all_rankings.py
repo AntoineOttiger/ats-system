@@ -13,7 +13,7 @@ un fichier JSON par méthode (schéma commun de ``ats_system.results_io``).
 import argparse
 from datetime import datetime
 
-from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY, RESULTS_DIR
+from ats_system.config import DEFAULT_ANNOUNCEMENT, CV_DIR, DEFAULT_CV_CATEGORY, ML6_KEYWORD_MODEL, RESULTS_DIR
 from ats_system.data import import_pdf
 from ats_system.results_io import build_ranking, save_results
 from ats_system.systems import (
@@ -101,7 +101,7 @@ def main():
     ml6_matcher = Ml6KeywordMatcher()
     ml6_matcher.import_model()
     scored = rank_ml6(ml6_matcher, offre_text, cvs)
-    params = {**base_params, "model": "ml6team/keyphrase-extraction-kbir-inspec"}
+    params = {**base_params, "model": ML6_KEYWORD_MODEL}
     out = save_results("ml6_keyword_match", build_ranking(scored), params, results_dir=run_dir)
     print(f"  -> {out}")
 

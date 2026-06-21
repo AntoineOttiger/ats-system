@@ -4,6 +4,33 @@ Système ATS (Applicant Tracking System) : scoring/classement de CVs (PDF) face 
 une offre d'emploi, via trois approches comparées — mots-clés, embeddings, et un
 LLM (Claude **ou** Mistral, fournisseur déduit du nom de modèle) en fenêtre glissante.
 
+## Skills disponibles
+
+Détails par module dans `.claude/skills/` (à lire à la demande) :
+
+- `systems.md` — les systèmes ATS (mots-clés baseline/ml6, embeddings, fenêtre glissante, hybride, orchestrateur).
+- `generators.md` — génération de CVs synthétiques PDF (vérité-terrain + CV « à optimiser »).
+- `agents.md` — agent d'optimisation de CV (ReAct) et couche d'adaptation des rankers.
+- `scripts.md` — points d'entrée CLI (`python scripts/<nom>.py`).
+
+**Ne consulte un skill que si la tâche courante le nécessite. Lis le skill
+correspondant avant de modifier du code dans ce module.**
+
+## Maintenance automatique
+
+Un hook `PostToolUse` (`.claude/settings.json` → `.claude/scripts/sync_skills.py`)
+surveille les modifications de code (events `Edit`, `Write`, `Bash`) et **détecte quand
+un skill est désynchronisé** du module qu'il documente. Le mapping dossier → skill est
+extrait dynamiquement des lignes « → détails : `.claude/skills/<nom>.md` » de ce fichier.
+
+**Si le hook retourne une erreur** (code de sortie ≠ 0, message `[sync_skills] …`) :
+
+1. Lire `.claude/.stale_skills` (un nom de skill périmé par ligne).
+2. Pour chaque skill listé, relire le code modifié dans le dossier correspondant.
+3. Mettre à jour le skill (`.claude/skills/<nom>.md`) pour refléter les **vrais
+   changements** du code (signatures, comportements, points d'entrée).
+4. Supprimer `.claude/.stale_skills` une fois la resynchronisation faite.
+
 ## Développement
 
 - **Layout `src/`** : `ats_system` est le seul package importable. Installé en
@@ -88,125 +115,23 @@ LLM (Claude **ou** Mistral, fournisseur déduit du nom de modèle) en fenêtre g
   fichier sans horodatage dans un dossier déjà daté) et `timestamped_run_dir(name)` (crée
   `results/<name>/<horodatage>/`).
 - **`systems/`** (réexporté par `ats_system.systems`) — un système ATS = une classe
-  par fichier, convention commune `import_model()` (chargement) puis inférence, plus une
-  méthode `run()` (pipeline complet + sauvegarde, cf. Conventions). Les systèmes mots-clés
-  / embeddings exposent en plus `score_cvs(offre_text, cvs)` (boucle de scoring → paires
-  `(cv_id, score)` triées, réutilisée par `run()` et `AllRankingsRunner`) :
-  - `baseline_keyword_match.py` — `BaselineKeywordMatcher` : mots-clés baseline
-    (regex + stopwords FR/EN). `import_model()` (stopwords nltk),
-    `extract_keywords()`, `match()` (statique → `{"score", "matching", "missing"}`),
-    `score_cvs()`, `run()` → `results/baseline_keyword_match/<ts>/`.
-  - `ml6_keyword_match.py` — `Ml6KeywordMatcher` : mots-clés via le modèle HF
-    `ml6team/keyphrase-extraction-kbir-inspec` (BERT, token classification ; chunks
-    de 400 mots pour la limite 512 tokens). `import_model()`, `extract_keywords()`,
-    `match()`, `score_cvs()`, `run()` → `results/ml6_keyword_match/<ts>/`.
-  - `embedding_cosine.py` — `EmbeddingCosineScorer` : similarité cosinus offre/CV
-    (0–100) via `SentenceTransformer` `all-MiniLM-L6-v2`. `import_model()`, `score()`,
-    `score_cvs()`, `run()` → `results/embedding_cosine/<ts>/`.
-  - `sliding_window_ranker.py` — `SlidingWindowCVRanker` : classement par fenêtre
-    glissante (inspiré de RankGPT) via un LLM (modèle `SLIDING_WINDOW_MODEL` de
-    `config.py` ; fournisseur Claude **ou** Mistral déduit du préfixe, appelé via
-    `LLMClient` de `llm.py`). Entrées : `import_model()`, `load_cvs()`,
-    `run_sliding_window_ranking()` → `RankingResult`, `run()` →
-    `results/sliding_window_ranking/<ts>/`, `display_results()`. Le `RankingResult`
-    expose en plus l'historique par passe (`pass_orders`, `pass_justifications` : ordre
-    des cv_ids + justifications à la fin de chaque passe).
-  - `hybrid_ml6_sliding_window.py` — `HybridMl6SlidingWindowRanker` : système hybride
-    deux étapes. (1) Présélection mots-clés via `Ml6KeywordMatcher` (local, gratuit) sur
-    tous les CVs, fournissant l'ordre de départ ; (2) affinage LLM par fenêtre glissante
-    (`SlidingWindowCVRanker`, modèle `SLIDING_WINDOW_MODEL`) sur **tous** les CVs, en
-    partant de cet ordre mots-clés. `import_model()` (charge les deux systèmes) puis
-    `rank()` → `HybridRankingResult` (classement final + historique : classement
-    mots-clés, `RankingResult` de la fenêtre glissante avec son historique par passe),
-    `run()` (écrit tout l'historique dans `results/hybrid_ranking/<ts>/` :
-    `ml6_keyword_match.json`, `sliding_window_pass{N}.json`, `hybrid_ranking.json`),
-    `display_results()`.
-  - `all_rankings_runner.py` — `AllRankingsRunner` : orchestrateur qui charge les données
-    **une fois** et lance les **quatre** systèmes ci-dessus (en réutilisant leur
-    `score_cvs()` / `run_sliding_window_ranking()`). `import_model()` (charge les quatre)
-    puis `run()` → un JSON par méthode dans un même `results/all_rankings/<ts>/`.
-- **`generators/`** (réexporté par `ats_system.generators`) :
-  - `synthetic_cv_generator.py` — `SyntheticCVGenerator` : génère des CVs
-    synthétiques PDF face à une annonce via un LLM (modèle `CV_GENERATOR_MODEL` ;
-    fournisseur Mistral **ou** Claude déduit du préfixe, appelé via `LLMClient` de
-    `llm.py`). La proximité CV/annonce est pilotée par des niveaux de profil
-    discrets (`PROFILE_LEVELS` : `perfect`, `strong`, `partial`, `unrelated`, avec
-    `rank` de vérité-terrain). `generate_cvs()` produit en plus, par défaut, **un CV
-    « à optimiser »** (`to_optimize`, `rank` 0, marqué `optimize: true` dans le
-    manifest) : candidat excellent sur le fond mais au vocabulaire volontairement non
-    aligné avec l'annonce (cas de test délibéré pour les méthodes mots-clés /
-    embeddings). Sa consigne (`DEFAULT_OPTIMIZE_INSTRUCTION`) est personnalisable via
-    `optimize_instruction=` ; désactivable via `include_optimize=False`. Entrées :
-    `import_model()`, `generate_cv()`, `generate_cvs(..., save=True)` → si `save`, écrit les
-    PDF (via `data.pdf_writer.write_text_pdf`) + un `manifest.json` sous
-    `GENERATED_DATA_DIR/synthetic_cvs_<timestamp>/` et renvoie ce dossier ; si `save=False`,
-    n'écrit rien et renvoie la liste des CVs générés en mémoire.
-
+  par fichier (convention `import_model()` puis inférence + `run()` ; mots-clés/embeddings
+  exposent aussi `score_cvs()`). Baseline/ml6 mots-clés, embeddings cosinus, fenêtre
+  glissante LLM, hybride, et l'orchestrateur `AllRankingsRunner`.
+  → détails : `.claude/skills/systems.md`
+- **`generators/`** (réexporté par `ats_system.generators`) — `SyntheticCVGenerator` :
+  génère des CVs synthétiques PDF face à une annonce (niveaux de profil + CV « à optimiser »).
+  → détails : `.claude/skills/generators.md`
 - **`agents/`** (réexporté par `ats_system.agents`) — agents LangChain / LangGraph :
-  - `cv_optimizer_agent.py` — `CVOptimizerAgent` : agent ReAct (Mistral, modèle
-    `CV_OPTIMIZER_MODEL`, stack `langchain` / `langgraph` / `langchain-mistralai`) dont la
-    mission est de **réécrire un CV** pour le faire remonter dans le classement face aux
-    autres CVs d'un dataset synthétique, **sans inventer** de qualifications (reformulation /
-    mise en valeur de la substance réelle face à l'annonce). L'agent reçoit l'annonce complète
-    et **décide seul** comment réécrire le CV. Le signal de feedback est le **rang compétitif**
-    du CV dans le dataset, calculé par la méthode choisie via `CV_OPTIMIZER_RANKER` (cf.
-    `dataset_rankers.py`) face à l'annonce — par défaut `ml6_keyword` (mots-clés ml6, local et
-    gratuit). Unique outil exposé : `rank_cv_in_dataset(cv_text)`
-    (rang + classement complet + analyse de ce CV). ⚠️ Avec le ranker `sliding_window`,
-    chaque appel d'outil relance un classement LLM complet du dataset (coûteux) ;
-    les rankers mots-clés/embeddings sont locaux et gratuits. Convention `import_model()` (charge
-    le LLM Mistral, le ranker du dataset, construit un limiteur de débit partagé
-    `InMemoryRateLimiter` — un seul token bucket plafonne **tous** les appels Mistral du
-    processus, agent + ranker `sliding_window`, à `requests_per_second` (défaut
-    `LLM_REQUESTS_PER_SECOND`) — et met en cache les CVs concurrents) puis `stream()`
-    (trace des « pensées ») / `optimize()` → texte du CV optimisé. `run(save=True)` localise
-    seul le CV « à optimiser » du dataset, l'optimise (en affichant la trace) et, si `save`,
-    écrit le PDF du CV optimisé (`cv_optimise.pdf`) + un `meta.json` (dataset, annonce, modèle,
-    ranker, trace, rang initial/final) sous `results/cv_optimizer/<ts>/`. Nécessite `MISTRAL_API_KEY`
-    (agent ; couvre aussi le ranker `sliding_window` tant que `SLIDING_WINDOW_MODEL` reste sur
-    Mistral). Si `SLIDING_WINDOW_MODEL` est basculé sur Claude, `ANTHROPIC_API_KEY` est requise
-    en plus (ranker).
-  - `dataset_rankers.py` — couche d'adaptation : enveloppe chaque système de `systems/` derrière
-    l'interface commune `DatasetRanker` (`import_model()` puis `rank()` → `DatasetRankResult` :
-    rang du candidat parmi les concurrents + classement + analyse riche). Registre
-    `CV_OPTIMIZER_RANKERS` + factory `build_dataset_ranker(name, ...)` pilotés par
-    `CV_OPTIMIZER_RANKER`. Les rankers mots-clés/embeddings transforment des scores par CV en rang
-    (tri décroissant) ; seul `sliding_window` (LLM) utilise le limiteur de débit.
+  `CVOptimizerAgent` (ReAct Mistral, réécrit un CV via le feedback de rang) et
+  `dataset_rankers.py` (couche d'adaptation `DatasetRanker` autour des systèmes).
+  → détails : `.claude/skills/agents.md`
 
 ### `scripts/` — points d'entrée (`python scripts/<nom>.py`)
 
-Chaque script est désormais **mince** : il parse ses arguments puis fait un seul appel
-`run()` (toute la logique vit dans les classes). Les scripts de classement comparent les
-approches sur les CVs `ENGINEERING` vs l'annonce par défaut (arg `--limit N` ; `0` = tous)
-et acceptent `--save/--no-save` (sauvegarde par défaut activée) :
-
-- `compute_kw_match_scores.py` — baseline mots-clés.
-- `compute_ml6_kw_match_scores.py` — mots-clés ml6team.
-- `compute_emb_scores.py` — embeddings.
-- `compute_sliding_window_ranking.py` — classement par fenêtre glissante LLM
-  (`--window-size`, `--passes`, `--model` ; nécessite la clé du fournisseur de
-  `SLIDING_WINDOW_MODEL`, par défaut `MISTRAL_API_KEY`).
-- `compute_all_rankings.py` — `AllRankingsRunner` : lance les **quatre** méthodes
-  (baseline, ml6, embeddings, fenêtre glissante) sur le même run et écrit un JSON par
-  méthode dans `results/all_rankings/<timestamp>/` (`--limit`, `--window-size`, `--passes`).
-- `compute_hybrid_ranking.py` — `HybridMl6SlidingWindowRanker` : présélection mots-clés
-  (ml6) puis affinage LLM par fenêtre glissante (`--limit`, `--window-size`, `--passes`,
-  `--model`). Écrit **tout l'historique** dans `results/hybrid_ranking/<timestamp>/` :
-  `ml6_keyword_match.json` (présélection), `sliding_window_pass{N}.json` (après chaque
-  passe) et `hybrid_ranking.json` (classement final). Nécessite la clé du fournisseur de
-  `SLIDING_WINDOW_MODEL` (par défaut `MISTRAL_API_KEY`).
-- `count_tokens.py` / `count_tokens_stats.py` — statistiques de tokens (tokenizer ml6team).
-  Hors périmètre `run()` (ni système ni classement) : inchangés, n'écrivent rien.
-- `generate_synthetic_cvs.py` — génère `--count N` CVs synthétiques PDF face à une
-  annonce (`--announcement`, `--model`, `--temperature`) via `SyntheticCVGenerator`
-  (nécessite `MISTRAL_API_KEY`). Génère aussi un CV « à optimiser » (désactivable via
-  `--no-optimize`, consigne personnalisable via `--optimize-prompt`). `--save/--no-save`
-  (défaut : écrit) → sorties sous `data/generated_data/synthetic_cvs_<timestamp>/`.
-- `launch_cv_optimizer_agent.py` — lance le `CVOptimizerAgent` sur le CV « à optimiser »
-  d'un dataset synthétique (`--dataset`, défaut : le plus récent ; `--announcement`,
-  `--model`, `--max-iterations`, `--save/--no-save`). Via `agent.run()` : affiche les
-  pensées et écrit `cv_optimise.pdf` + `meta.json` sous `results/cv_optimizer/<timestamp>/`.
-  Nécessite `MISTRAL_API_KEY`.
+Scripts minces : parsing d'arguments puis un seul appel `run()` (toute la logique vit dans
+les classes).
+→ détails : `.claude/skills/scripts.md`
 
 ### `notebooks/` — analyses exploratoires (`jupyter`)
 

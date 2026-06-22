@@ -11,6 +11,7 @@ from ats_system.systems.embedding_cosine import EmbeddingCosineScorer
 from ats_system.systems.sliding_window_ranker import SlidingWindowCVRanker
 from ats_system.systems.hybrid_ml6_sliding_window import HybridMl6SlidingWindowRanker
 from ats_system.systems.all_rankings_runner import AllRankingsRunner
+from ats_system.systems.hrflow_ranker import HrflowCVRanker
 
 __all__ = [
     "BaselineKeywordMatcher",
@@ -19,4 +20,5 @@ __all__ = [
     "SlidingWindowCVRanker",
     "HybridMl6SlidingWindowRanker",
     "AllRankingsRunner",
+    "HrflowCVRanker",
 ]

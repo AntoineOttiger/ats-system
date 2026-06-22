@@ -46,3 +46,19 @@ réutilisée par `run()` et `AllRankingsRunner`).
   **une fois** et lance les **quatre** systèmes ci-dessus (en réutilisant leur `score_cvs()` /
   `run_sliding_window_ranking()`). `import_model()` (charge les quatre) puis `run()` → un JSON
   par méthode dans un même `results/all_rankings/<ts>/`.
+
+- **`hrflow_ranker.py`** — `HrflowCVRanker` : scoring via l'API HrFlow (parsing PDF +
+  scoring cloud, SDK `hrflow` v4). Flow dans `run()` :
+  (1) `_store_job(text)` → indexe l'offre via `job.storing.add_json` (texte dans `summary`,
+  référence = hash MD5 pour upsert idempotent) → `job_key` ;
+  (2) `_upload_cv(cv_path)` × N → `profile.parsing.add_file` (PDF binaire,
+  `reference=cv_path.name`, `sync_parsing_indexing=1` pour indexation auto) ;
+  (3) pause `index_wait` secondes (défaut 10 s, traitement asynchrone côté HrFlow) ;
+  (4) `profile.scoring.list(source_keys, board_key, job_key, limit)` → scores, filtrés
+  par référence pour ne garder que le batch courant, normalisés 0–1 → 0–100.
+  `import_model()` charge `Hrflow` (import tardif) et lit `HRFLOW_API_KEY`,
+  `HRFLOW_API_USER`, `HRFLOW_SOURCE_KEY`, `HRFLOW_BOARD_KEY` depuis `.env`.
+  Charge les CVs depuis les **chemins PDF** directement (`CV_DIR / category / *.pdf`),
+  pas via `load_cvs()` — nécessaire pour l'upload binaire.
+  N'expose **pas** `score_cvs()` (incompatible avec l'approche fichier).
+  `run()` → `results/hrflow_ranking/<ts>/`.

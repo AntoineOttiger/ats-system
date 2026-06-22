@@ -21,6 +21,7 @@ dependencies = [
     "langgraph",
     "langchain",
     "langchain-mistralai",
+    "hrflow",
 ]
 
 [project.optional-dependencies]

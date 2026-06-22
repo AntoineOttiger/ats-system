@@ -29,7 +29,9 @@ acceptent `--save/--no-save` (sauvegarde par défaut activée).
 - **`generate_synthetic_cvs.py`** — génère `--count N` CVs synthétiques PDF face à une annonce
   (`--announcement`, `--model`, `--temperature`) via `SyntheticCVGenerator` (nécessite
   `MISTRAL_API_KEY`). Génère aussi un CV « à optimiser » (désactivable via `--no-optimize`,
-  consigne personnalisable via `--optimize-prompt`). `--save/--no-save` (défaut : écrit) →
+  consigne personnalisable via `--optimize-prompt`). `--profile-set default|top` : set de
+  niveaux de profil à utiliser (`default` = hétérogène, `top` = 5 variantes top-niveau ;
+  défaut : `default`). `--save/--no-save` (défaut : écrit) →
   sorties sous `data/generated_data/synthetic_cvs_<timestamp>/`.
 - **`launch_cv_optimizer_agent.py`** — lance le `CVOptimizerAgent` sur le CV « à optimiser »
   d'un dataset synthétique (`--dataset`, défaut : le plus récent ; `--announcement`, `--model`,

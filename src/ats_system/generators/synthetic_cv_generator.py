@@ -87,6 +87,74 @@ PROFILE_LEVELS: tuple[ProfileLevel, ...] = (
 
 PROFILE_LEVELS_BY_NAME: dict[str, ProfileLevel] = {lvl.name: lvl for lvl in PROFILE_LEVELS}
 
+# Cinq variantes de candidats top-niveau (rank 0 pour toutes : vérité-terrain identique),
+# avec des angles différents pour assurer la diversité stylistique du lot.
+PROFILE_LEVELS_TOP: tuple[ProfileLevel, ...] = (
+    ProfileLevel(
+        name="top_technical",
+        rank=0,
+        instruction=(
+            "Generate the resume of a TOP-TIER candidate with exceptional technical depth: "
+            "they have mastered the exact technology stack required by the posting, can cite "
+            "measurable achievements on recent technical projects (performance gains, system "
+            "scale, delivery timelines) and hold relevant certifications or have contributed "
+            "to respected open-source projects in the field."
+        ),
+    ),
+    ProfileLevel(
+        name="top_leadership",
+        rank=0,
+        instruction=(
+            "Generate the resume of a TOP-TIER candidate who combines solid technical "
+            "expertise with proven leadership: they satisfy all technical requirements of "
+            "the posting AND have led cross-functional teams, mentored junior engineers, "
+            "driven architectural decisions, and delivered results through others — not "
+            "just individually."
+        ),
+    ),
+    ProfileLevel(
+        name="top_academic",
+        rank=0,
+        instruction=(
+            "Generate the resume of a TOP-TIER candidate with an elite academic background: "
+            "they graduated from a highly ranked institution (engineering school, research "
+            "university) with honours, have publications or thesis work directly relevant "
+            "to the position, and their early-career experience — internships and first "
+            "roles — already demonstrates strong alignment with the job requirements."
+        ),
+    ),
+    ProfileLevel(
+        name="top_veteran",
+        rank=0,
+        instruction=(
+            "Generate the resume of a TOP-TIER seasoned expert: a senior professional with "
+            "15+ years of experience directly relevant to the posting, a track record of "
+            "delivering large-scale projects, quantified impact (budget managed, headcount "
+            "led, revenue influenced), and industry recognition (speaker, advisor, or "
+            "committee member in their field)."
+        ),
+    ),
+    ProfileLevel(
+        name="top_innovator",
+        rank=0,
+        instruction=(
+            "Generate the resume of a TOP-TIER high-visibility innovator: an ideal fit for "
+            "the posting who also stands out through notable achievements beyond day-to-day "
+            "work — patents filed, widely-used open-source tools authored, awards received, "
+            "conference talks given, or significant media coverage of their technical work. "
+            "Their profile reads as both highly competent and distinctively accomplished."
+        ),
+    ),
+)
+
+PROFILE_LEVELS_TOP_BY_NAME: dict[str, ProfileLevel] = {lvl.name: lvl for lvl in PROFILE_LEVELS_TOP}
+
+# Tous les sets disponibles, indexés par nom.
+PROFILE_SETS: dict[str, tuple[ProfileLevel, ...]] = {
+    "default": PROFILE_LEVELS,
+    "top": PROFILE_LEVELS_TOP,
+}
+
 
 # ---------------------------------------------------------------------------
 # CV « à optimiser » — fit théorique fort, mais vocabulaire non aligné
@@ -199,6 +267,7 @@ class SyntheticCVGenerator:
         announcement: str,
         n: int,
         levels: Optional[list[str]] = None,
+        profile_set: str = "default",
         run_name: Optional[str] = None,
         output_dir: Path = GENERATED_DATA_DIR,
         include_optimize: bool = True,
@@ -216,8 +285,11 @@ class SyntheticCVGenerator:
         Args:
             announcement:         Texte complet de l'annonce.
             n:                    Nombre de CVs « niveau de profil » à générer.
-            levels:               Sous-ensemble de noms de niveaux à utiliser
-                                  (cf. ``PROFILE_LEVELS``). Défaut : tous les niveaux.
+            levels:               Sous-ensemble de noms de niveaux à utiliser dans le set
+                                  choisi. Défaut : tous les niveaux du set.
+            profile_set:          Set de niveaux à utiliser : ``"default"`` (hétérogène :
+                                  perfect/strong/partial/unrelated) ou ``"top"`` (5 variantes
+                                  top-niveau). Défaut : ``"default"``.
             run_name:             Nom de dossier forcé. Défaut : ``synthetic_cvs_<horodatage>``.
             output_dir:           Dossier parent des sorties. Défaut : ``GENERATED_DATA_DIR``.
             include_optimize:     Si vrai, génère en plus un CV « à optimiser ».
@@ -235,8 +307,14 @@ class SyntheticCVGenerator:
             raise RuntimeError("Appelez import_model() avant de générer des CVs.")
         if n < 1:
             raise ValueError("Il faut générer au moins 1 CV.")
+        if profile_set not in PROFILE_SETS:
+            raise ValueError(
+                f"Set de profils inconnu : {profile_set!r}. "
+                f"Valeurs possibles : {list(PROFILE_SETS)}."
+            )
 
-        selected = self._resolve_levels(levels)
+        available = {lvl.name: lvl for lvl in PROFILE_SETS[profile_set]}
+        selected = self._resolve_levels(levels, available)
         run_dir = self._make_run_dir(output_dir, run_name) if save else None
 
         generated: list[dict] = []
@@ -280,6 +358,7 @@ class SyntheticCVGenerator:
             "params": {
                 "model": self.model,
                 "count": n,
+                "profile_set": profile_set,
                 "levels": [lvl.name for lvl in selected],
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens,
@@ -303,18 +382,19 @@ class SyntheticCVGenerator:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _resolve_levels(levels: Optional[list[str]]) -> list[ProfileLevel]:
+    def _resolve_levels(
+        levels: Optional[list[str]], available: dict[str, ProfileLevel]
+    ) -> list[ProfileLevel]:
         """Valide et résout une liste de noms de niveaux en objets ``ProfileLevel``."""
         if levels is None:
-            return list(PROFILE_LEVELS)
+            return list(available.values())
         resolved = []
         for name in levels:
-            if name not in PROFILE_LEVELS_BY_NAME:
+            if name not in available:
                 raise ValueError(
-                    f"Niveau inconnu : {name!r}. Valeurs possibles : "
-                    f"{list(PROFILE_LEVELS_BY_NAME)}."
+                    f"Niveau inconnu : {name!r}. Valeurs possibles : {list(available)}."
                 )
-            resolved.append(PROFILE_LEVELS_BY_NAME[name])
+            resolved.append(available[name])
         if not resolved:
             raise ValueError("La liste de niveaux ne peut pas être vide.")
         return resolved

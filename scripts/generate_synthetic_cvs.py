@@ -4,6 +4,7 @@ from pathlib import Path
 from ats_system.config import CV_GENERATOR_MODEL, DEFAULT_ANNOUNCEMENT
 from ats_system.data import import_pdf
 from ats_system.generators import SyntheticCVGenerator
+from ats_system.generators.synthetic_cv_generator import PROFILE_SETS
 
 
 def main():
@@ -40,6 +41,16 @@ def main():
         "fond mais au vocabulaire non aligné avec l'annonce). Défaut : consigne intégrée.",
     )
     parser.add_argument(
+        "--profile-set",
+        type=str,
+        default="default",
+        choices=list(PROFILE_SETS),
+        help=(
+            "Set de niveaux de profil : 'default' (hétérogène : perfect/strong/partial/unrelated) "
+            "ou 'top' (5 variantes top-niveau, toutes rank 0). Défaut : 'default'."
+        ),
+    )
+    parser.add_argument(
         "--save", action=argparse.BooleanOptionalAction, default=True,
         help="Écrire les PDF + manifest (--no-save : génère en mémoire sans rien écrire)",
     )
@@ -57,6 +68,7 @@ def main():
     result = generator.generate_cvs(
         announcement["content"],
         n=args.count,
+        profile_set=args.profile_set,
         include_optimize=not args.no_optimize,
         optimize_instruction=args.optimize_prompt,
         save=args.save,

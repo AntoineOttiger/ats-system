@@ -36,9 +36,10 @@ from langchain_core.tools import tool
 from langchain_mistralai import ChatMistralAI
 from langgraph.prebuilt import create_react_agent
 
+from ats_system.agents.dataset_loading import find_optimize_cv, load_competitors
 from ats_system.agents.dataset_rankers import DatasetRanker, build_dataset_ranker
 from ats_system.config import CV_OPTIMIZER_MODEL, CV_OPTIMIZER_RANKER, LLM_REQUESTS_PER_SECOND
-from ats_system.data import import_pdf, write_text_pdf
+from ats_system.data import write_text_pdf
 from ats_system.results_io import timestamped_run_dir
 
 logger = logging.getLogger(__name__)
@@ -193,7 +194,7 @@ class CVOptimizerAgent:
         self._ranker.import_model()
 
         # Textes des CVs concurrents (tous sauf le « à optimiser ») — lus une fois.
-        self._competitor_cvs = self._load_dataset_competitors()
+        self._competitor_cvs = load_competitors(self.dataset_dir)
         logger.info("CVs concurrents chargés : %d", len(self._competitor_cvs))
 
         # Outils (closures sur le cache) + agent ReAct.
@@ -274,7 +275,7 @@ class CVOptimizerAgent:
         if self._agent is None:
             raise RuntimeError("Appelez import_model() avant de lancer l'agent.")
 
-        cv_file, cv_text = self._find_optimize_cv()
+        cv_file, cv_text = find_optimize_cv(self.dataset_dir)
         print(f"CV à optimiser : {cv_file}")
 
         print("\n" + "=" * 70)
@@ -299,15 +300,6 @@ class CVOptimizerAgent:
     # ------------------------------------------------------------------
     # Helpers internes
     # ------------------------------------------------------------------
-
-    def _find_optimize_cv(self) -> tuple[str, str]:
-        """Localise le CV « à optimiser » (entrée ``optimize: true``) → ``(nom_fichier, texte)``."""
-        manifest = json.loads((self.dataset_dir / "manifest.json").read_text(encoding="utf-8"))
-        for entry in manifest["cvs"]:
-            if entry.get("optimize"):
-                cv_path = self.dataset_dir / entry["file"]
-                return entry["file"], import_pdf(str(cv_path))["content"]
-        raise ValueError(f"Aucun CV « à optimiser » (optimize: true) dans {self.dataset_dir}.")
 
     @staticmethod
     def _record_step(update: dict, trace: list[dict]) -> str:
@@ -369,23 +361,6 @@ class CVOptimizerAgent:
         )
         print(f"\nRésultats sauvegardés dans : {run_dir}")
         return run_dir
-
-    def _load_dataset_competitors(self) -> list[dict]:
-        """Lit les CVs concurrents du dataset (dicts ``{"id", "content"}`` pour ``load_cvs``).
-
-        Le CV « à optimiser » (entrée ``optimize: true`` du manifest) est exclu : c'est le
-        candidat dont l'agent fait justement varier le rang.
-        """
-        manifest_path = self.dataset_dir / "manifest.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-
-        competitors: list[dict] = []
-        for entry in manifest["cvs"]:
-            if entry.get("optimize"):
-                continue
-            cv_path = self.dataset_dir / entry["file"]
-            competitors.append({"id": entry["file"], "content": import_pdf(str(cv_path))["content"]})
-        return competitors
 
     def _build_tools(self) -> list:
         """Construit les outils LangChain (closures sur le cache du dataset)."""

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
 from ats_system.systems import (
     BaselineKeywordMatcher,
     EmbeddingCosineScorer,
+    HybridMl6SlidingWindowRanker,
     Ml6KeywordMatcher,
     SlidingWindowCVRanker,
 )
@@ -115,6 +116,57 @@ class SlidingWindowDatasetRanker:
         ranking_ids = [cv.id for cv in ranking]
         position = ranking_ids.index(candidate_id) + 1
         analysis = result.justifications.get(candidate_id) or "(aucune)"
+        return DatasetRankResult(
+            position=position,
+            total=len(ranking_ids),
+            ranking_ids=ranking_ids,
+            analysis=analysis,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Adaptateur hybride (présélection mots-clés ml6 puis affinage LLM)
+# ---------------------------------------------------------------------------
+
+class HybridDatasetRanker:
+    """Enveloppe :class:`HybridMl6SlidingWindowRanker` (présélection ml6 puis affinage LLM).
+
+    Coûteux/facturé (l'affinage par fenêtre glissante appelle le LLM), comme
+    :class:`SlidingWindowDatasetRanker` ; l'analyse du candidat combine la justification LLM
+    et son score mots-clés ml6.
+    """
+
+    def __init__(
+        self,
+        window_size: int = 4,
+        num_passes: int = 3,
+        rate_limiter: Optional["BaseRateLimiter"] = None,
+    ):
+        self._ranker = HybridMl6SlidingWindowRanker(
+            window_size=window_size,
+            num_passes=num_passes,
+            rate_limiter=rate_limiter,
+        )
+
+    def import_model(self) -> None:
+        self._ranker.import_model()
+
+    def rank(
+        self,
+        announcement: str,
+        competitor_cvs: list[dict],
+        candidate_id: str,
+        candidate_text: str,
+    ) -> DatasetRankResult:
+        all_cvs = competitor_cvs + [{"id": candidate_id, "content": candidate_text}]
+        result = self._ranker.rank(announcement, all_cvs)
+
+        ranking_ids = [cv_id for cv_id, _ in result.ranked]
+        position = ranking_ids.index(candidate_id) + 1
+
+        justification = result.justifications.get(candidate_id) or "(aucune)"
+        ml6_score = result.ml6_scores.get(candidate_id)
+        analysis = f"Score mots-clés ml6 : {ml6_score}/100.\nAnalyse LLM : {justification}"
         return DatasetRankResult(
             position=position,
             total=len(ranking_ids),
@@ -245,10 +297,19 @@ def _build_sliding_window(*, rate_limiter, window_size, num_passes) -> DatasetRa
     )
 
 
+def _build_hybrid(*, rate_limiter, window_size, num_passes) -> DatasetRanker:
+    return HybridDatasetRanker(
+        window_size=window_size,
+        num_passes=num_passes,
+        rate_limiter=rate_limiter,
+    )
+
+
 # Mappe un nom de ranker → fabrique. Les fabriques acceptent les mêmes kwargs ; ceux qui ne
 # concernent pas une méthode donnée (fenêtre glissante) sont simplement ignorés.
 CV_OPTIMIZER_RANKERS = {
     "sliding_window": _build_sliding_window,
+    "hybrid_ml6_sliding_window": _build_hybrid,
     "baseline_keyword": lambda **_: _KeywordDatasetRanker(BaselineKeywordMatcher),
     "ml6_keyword": lambda **_: _KeywordDatasetRanker(Ml6KeywordMatcher),
     "embedding_cosine": lambda **_: EmbeddingDatasetRanker(),

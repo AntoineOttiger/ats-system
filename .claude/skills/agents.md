@@ -33,9 +33,33 @@ Agents LangChain / LangGraph.
   `SLIDING_WINDOW_MODEL` reste sur Mistral). Si `SLIDING_WINDOW_MODEL` est basculé sur Claude,
   `ANTHROPIC_API_KEY` est requise en plus (ranker).
 
+- **`one_shot_cv_optimizer.py`** — `OneShotCVOptimizer` : **baseline non itérative** face au
+  `CVOptimizerAgent`. Réécrit le CV « à optimiser » d'un dataset synthétique en **un seul
+  appel LLM**, **à l'aveugle** (prompt = annonce + CV uniquement, mêmes garde-fous que l'agent :
+  interdiction d'inventer, sortie = CV seul), via `LLMClient` directement (pas de
+  LangGraph/ReAct, fournisseur déduit du préfixe de `CV_OPTIMIZER_MODEL`). Le rang du CV est
+  mesuré **avant et après** la réécriture par le ranker choisi (`CV_OPTIMIZER_RANKER`) — pour
+  le rapport seulement, **jamais montré au LLM**. Convention `import_model()` (charge
+  `LLMClient`, le ranker, construit un `InMemoryRateLimiter` partagé client+ranker, met en
+  cache les CVs concurrents) puis `optimize(cv_text)` → texte du CV optimisé. `run(save=True)`
+  localise seul le CV « à optimiser », mesure le rang initial, réécrit, re-mesure, et si
+  `save` écrit `cv_optimise.pdf` + `meta.json` (dataset, annonce, modèle, ranker,
+  `rang_initial`/`rang_final`/`total`, sans trace) sous `results/cv_optimizer_oneshot/<ts>/`.
+  Nécessite la clé du fournisseur du modèle (par défaut `MISTRAL_API_KEY` ; plus
+  `ANTHROPIC_API_KEY` si le ranker `sliding_window` tourne sur un modèle Claude).
+
+- **`dataset_loading.py`** — helpers mutualisés (utilisés par `CVOptimizerAgent` et
+  `OneShotCVOptimizer`) pour lire un dataset synthétique via son `manifest.json` :
+  `find_optimize_cv(dataset_dir)` → `(nom_fichier, texte)` du CV `optimize: true`, et
+  `load_competitors(dataset_dir)` → liste de dicts `{"id", "content"}` des autres CVs.
+
 - **`dataset_rankers.py`** — couche d'adaptation : enveloppe chaque système de `systems/`
   derrière l'interface commune `DatasetRanker` (`import_model()` puis `rank()` →
   `DatasetRankResult` : rang du candidat parmi les concurrents + classement + analyse riche).
   Registre `CV_OPTIMIZER_RANKERS` + factory `build_dataset_ranker(name, ...)` pilotés par
-  `CV_OPTIMIZER_RANKER`. Les rankers mots-clés/embeddings transforment des scores par CV en
-  rang (tri décroissant) ; seul `sliding_window` (LLM) utilise le limiteur de débit.
+  `CV_OPTIMIZER_RANKER`. Clés : `sliding_window` (LLM holistique), `hybrid_ml6_sliding_window`
+  (présélection mots-clés ml6 puis affinage fenêtre glissante LLM — adaptateur
+  `HybridDatasetRanker`, analyse = score ml6 + justification LLM), `baseline_keyword`,
+  `ml6_keyword`, `embedding_cosine`. Les rankers mots-clés/embeddings transforment des scores
+  par CV en rang (tri décroissant) ; `sliding_window` et `hybrid_ml6_sliding_window` (qui
+  appellent le LLM) utilisent le limiteur de débit partagé.

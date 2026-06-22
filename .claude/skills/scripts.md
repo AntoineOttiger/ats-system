@@ -40,6 +40,15 @@ Chaque script est **mince** : il parse ses arguments puis fait un seul appel `ru
   sorties sous `data/generated_data/synthetic_cvs_<timestamp>/`.
 - **`launch_cv_optimizer_agent.py`** — lance le `CVOptimizerAgent` sur le CV « à optimiser »
   d'un dataset synthétique (`--dataset`, défaut : le plus récent ; `--announcement`, `--model`,
-  `--max-iterations`, `--save/--no-save`). Via `agent.run()` : affiche les pensées et écrit
-  `cv_optimise.pdf` + `meta.json` sous `results/cv_optimizer/<timestamp>/`. Nécessite
-  `MISTRAL_API_KEY`.
+  `--max-iterations`, `--save/--no-save`). `--ranker` choisit la méthode de classement du
+  feedback de rang (choix : clés de `CV_OPTIMIZER_RANKERS` ; défaut : `CV_OPTIMIZER_RANKER` de
+  `config.py`). Via `agent.run()` : affiche les pensées et écrit `cv_optimise.pdf` +
+  `meta.json` sous `results/cv_optimizer/<timestamp>/`. Nécessite `MISTRAL_API_KEY`.
+- **`launch_one_shot_cv_optimizer.py`** — lance l'`OneShotCVOptimizer` (baseline non itérative)
+  sur le CV « à optimiser » d'un dataset synthétique : réécriture en **un seul appel LLM** à
+  l'aveugle, avec mesure du rang avant/après (`--dataset`, défaut : le plus récent ;
+  `--announcement`, `--model`, `--ranker` parmi les clés de `CV_OPTIMIZER_RANKERS`,
+  `--save/--no-save` ; **pas** de `--max-iterations`). Via `optimizer.run()` : écrit
+  `cv_optimise.pdf` + `meta.json` (avec `rang_initial`/`rang_final`) sous
+  `results/cv_optimizer_oneshot/<timestamp>/`. Nécessite la clé du fournisseur du modèle
+  (par défaut `MISTRAL_API_KEY`).

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV_CATEGORY, SLIDING_WINDOW_MODEL
+from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV_DIR, SLIDING_WINDOW_MODEL
 from ats_system.data import load_announcement, load_cvs
 from ats_system.llm import LLMClient
 from ats_system.results_io import build_ranking, save_results, timestamped_run_dir
@@ -189,7 +189,7 @@ class SlidingWindowCVRanker:
         *,
         limit: Optional[int] = None,
         announcement: Path = DEFAULT_ANNOUNCEMENT,
-        category: str = DEFAULT_CV_CATEGORY,
+        cv_dir: Path = DEFAULT_CV_DIR,
         save: bool = True,
     ) -> RankingResult:
         """Pipeline complet : chargement du modèle, des données, classement et sauvegarde.
@@ -197,7 +197,7 @@ class SlidingWindowCVRanker:
         Args:
             limit:        Nombre maximum de CVs à classer (``None``/``0`` = tous).
             announcement: PDF de l'annonce (défaut : annonce par défaut du projet).
-            category:     Catégorie de CVs (sous-dossier de ``CV_DIR``).
+            cv_dir:       Dossier contenant les CVs PDF.
             save:         Si vrai, écrit le classement sous ``results/<METHOD>/<horodatage>/``.
 
         Returns:
@@ -206,7 +206,7 @@ class SlidingWindowCVRanker:
         print("Initialisation du ranker...")
         self.import_model()
         offre = load_announcement(announcement)
-        cvs = load_cvs(category, limit)
+        cvs = load_cvs(cv_dir, limit)
 
         print(f"Classement de {len(cvs)} CVs en cours (appels LLM)...")
         cv_objs = self.load_cvs(cvs)
@@ -217,7 +217,7 @@ class SlidingWindowCVRanker:
         if save:
             params = {
                 "announcement": Path(announcement).name,
-                "category": category,
+                "cv_dir": str(cv_dir),
                 "model": self.model,
                 "limit": limit if limit is not None else 0,
                 "window_size": self.window_size,

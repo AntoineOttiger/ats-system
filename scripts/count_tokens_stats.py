@@ -3,17 +3,17 @@ import statistics
 
 from transformers import AutoTokenizer
 
-from ats_system.config import CV_DIR, DEFAULT_CV_CATEGORY, ML6_KEYWORD_MODEL
+from ats_system.config import DEFAULT_CV_DIR, ML6_KEYWORD_MODEL
 from ats_system.data import import_pdf
 
 MODEL_NAME = ML6_KEYWORD_MODEL
 
-CATEGORY_DIR = CV_DIR / DEFAULT_CV_CATEGORY
+CATEGORY_DIR = DEFAULT_CV_DIR
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description=f"Calcule la moyenne et l'écart type des tokens des CVs du dossier {DEFAULT_CV_CATEGORY}."
+        description=f"Calcule la moyenne et l'écart type des tokens des CVs du dossier {DEFAULT_CV_DIR.name}."
     )
     parser.add_argument("--limit", type=int, default=0, help="Nombre maximum de CVs à traiter (0 = tous)")
     parser.add_argument("--model", default=MODEL_NAME, help="Modèle HuggingFace dont utiliser le tokenizer")

@@ -8,7 +8,7 @@ en une ligne.
 from pathlib import Path
 from typing import Optional
 
-from ats_system.config import CV_DIR, DEFAULT_ANNOUNCEMENT, DEFAULT_CV_CATEGORY
+from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV_DIR
 from ats_system.data.pdf_loader import import_pdf
 
 
@@ -17,17 +17,17 @@ def load_announcement(announcement: Path = DEFAULT_ANNOUNCEMENT) -> dict:
     return import_pdf(str(announcement))
 
 
-def load_cvs(category: str = DEFAULT_CV_CATEGORY, limit: Optional[int] = None) -> list[dict]:
-    """Charge les CVs PDF d'une catégorie (triés par nom de fichier).
+def load_cvs(cv_dir: Path = DEFAULT_CV_DIR, limit: Optional[int] = None) -> list[dict]:
+    """Charge les CVs PDF d'un dossier (triés par nom de fichier).
 
     Args:
-        category: Sous-dossier de ``CV_DIR`` (ex. ``"ENGINEERING"``).
-        limit:    Nombre maximum de CVs à charger. ``None`` ou ``<= 0`` = tous.
+        cv_dir: Dossier contenant les CVs PDF.
+        limit:  Nombre maximum de CVs à charger. ``None`` ou ``<= 0`` = tous.
 
     Returns:
         Liste de dicts ``{"id", "content"}`` (cf. ``import_pdf``).
     """
-    cv_files = sorted((CV_DIR / category).glob("*.pdf"))
+    cv_files = sorted(cv_dir.glob("*.pdf"))
     if limit is not None and limit > 0:
         cv_files = cv_files[:limit]
     return [import_pdf(str(cv_path)) for cv_path in cv_files]

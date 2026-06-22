@@ -8,6 +8,17 @@ cf. Conventions de `CLAUDE.md`). Les systèmes mots-clés / embeddings exposent 
 `score_cvs(offre_text, cvs)` (boucle de scoring → paires `(cv_id, score)` triées,
 réutilisée par `run()` et `AllRankingsRunner`).
 
+**Signature commune de `run()` :**
+```python
+def run(self, *, limit=None, announcement: Path = DEFAULT_ANNOUNCEMENT,
+        cv_dir: Path = DEFAULT_CV_DIR, save: bool = True)
+```
+`cv_dir` est un chemin direct vers le dossier des CVs PDF (défaut : `DEFAULT_CV_DIR` =
+`data/cv/ENGINEERING/`), ce qui permet d'utiliser n'importe quel dossier (y compris les
+datasets synthétiques). Remplace l'ancien paramètre `category: str`.
+
+Dans le JSON sauvegardé, le champ `params.cv_dir` (string du chemin absolu) remplace l'ancien `params.category`.
+
 ## Classes
 
 - **`baseline_keyword_match.py`** — `BaselineKeywordMatcher` : mots-clés baseline
@@ -47,18 +58,17 @@ réutilisée par `run()` et `AllRankingsRunner`).
   `run_sliding_window_ranking()`). `import_model()` (charge les quatre) puis `run()` → un JSON
   par méthode dans un même `results/all_rankings/<ts>/`.
 
-- **`hrflow_ranker.py`** — `HrflowCVRanker` : scoring via l'API HrFlow (parsing PDF +
+- **`hrflow_ranker.py`** — `HrflowCVRanker` : scoring via l'API HrFlow (indexation JSON +
   scoring cloud, SDK `hrflow` v4). Flow dans `run()` :
-  (1) `_store_job(text)` → indexe l'offre via `job.storing.add_json` (texte dans `summary`,
+  (1) `_store_job(text)` → indexe l'offre via `job.storing.add_json` (texte dans `sections`,
   référence = hash MD5 pour upsert idempotent) → `job_key` ;
-  (2) `_upload_cv(cv_path)` × N → `profile.parsing.add_file` (PDF binaire,
-  `reference=cv_path.name`, `sync_parsing_indexing=1` pour indexation auto) ;
-  (3) pause `index_wait` secondes (défaut 10 s, traitement asynchrone côté HrFlow) ;
-  (4) `profile.scoring.list(source_keys, board_key, job_key, limit)` → scores, filtrés
-  par référence pour ne garder que le batch courant, normalisés 0–1 → 0–100.
+  (2) `_index_profile(cv_path)` × N → `profile.storing.add_json` (texte brut dans `text` +
+  `info.summary`, `reference=cv_path.name`, indexation synchrone) ;
+  (3) `profile.scoring.list(source_keys, board_key, job_key, limit)` → scores,
+  filtrés par référence pour ne garder que le batch courant, normalisés 0–1 → 0–100.
   `import_model()` charge `Hrflow` (import tardif) et lit `HRFLOW_API_KEY`,
   `HRFLOW_API_USER`, `HRFLOW_SOURCE_KEY`, `HRFLOW_BOARD_KEY` depuis `.env`.
-  Charge les CVs depuis les **chemins PDF** directement (`CV_DIR / category / *.pdf`),
-  pas via `load_cvs()` — nécessaire pour l'upload binaire.
+  Charge les CVs depuis les **chemins PDF** directement (`cv_dir.glob("*.pdf")`),
+  pas via `load_cvs()` — nécessaire pour accéder aux chemins fichiers.
   N'expose **pas** `score_cvs()` (incompatible avec l'approche fichier).
   `run()` → `results/hrflow_ranking/<ts>/`.

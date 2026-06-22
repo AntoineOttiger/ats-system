@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Optional
 
 from ats_system.config import (
     DEFAULT_ANNOUNCEMENT,
-    DEFAULT_CV_CATEGORY,
+    DEFAULT_CV_DIR,
     ML6_KEYWORD_MODEL,
     SLIDING_WINDOW_MODEL,
 )
@@ -165,7 +165,7 @@ class HybridMl6SlidingWindowRanker:
         *,
         limit: Optional[int] = None,
         announcement: Path = DEFAULT_ANNOUNCEMENT,
-        category: str = DEFAULT_CV_CATEGORY,
+        cv_dir: Path = DEFAULT_CV_DIR,
         save: bool = True,
     ) -> HybridRankingResult:
         """Pipeline complet : chargement, classement hybride et sauvegarde de l'historique.
@@ -178,7 +178,7 @@ class HybridMl6SlidingWindowRanker:
         Args:
             limit:        Nombre maximum de CVs à classer (``None``/``0`` = tous).
             announcement: PDF de l'annonce (défaut : annonce par défaut du projet).
-            category:     Catégorie de CVs (sous-dossier de ``CV_DIR``).
+            cv_dir:       Dossier contenant les CVs PDF.
             save:         Si vrai, écrit tout l'historique de classement.
 
         Returns:
@@ -187,7 +187,7 @@ class HybridMl6SlidingWindowRanker:
         print("Initialisation du système hybride (chargement des modèles)...")
         self.import_model()
         offre = load_announcement(announcement)
-        cvs = load_cvs(category, limit)
+        cvs = load_cvs(cv_dir, limit)
 
         print(f"Classement de {len(cvs)} CVs (passe mots-clés puis appels LLM)...")
         result = self.rank(job_offer=offre["content"], cvs=cvs)
@@ -195,14 +195,14 @@ class HybridMl6SlidingWindowRanker:
         self.display_results(result)
 
         if save:
-            self._save_history(result, announcement, category, limit, len(cvs))
+            self._save_history(result, announcement, cv_dir, limit, len(cvs))
         return result
 
     def _save_history(
         self,
         result: HybridRankingResult,
         announcement: Path,
-        category: str,
+        cv_dir: Path,
         limit: Optional[int],
         num_cvs: int,
     ) -> None:
@@ -210,7 +210,7 @@ class HybridMl6SlidingWindowRanker:
         run_dir = timestamped_run_dir(METHOD)
         base_params = {
             "announcement": Path(announcement).name,
-            "category": category,
+            "cv_dir": str(cv_dir),
             "limit": limit if limit is not None else 0,
             "num_cvs": num_cvs,
         }

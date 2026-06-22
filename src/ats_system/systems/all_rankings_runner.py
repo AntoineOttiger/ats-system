@@ -17,7 +17,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV_CATEGORY, ML6_KEYWORD_MODEL, SLIDING_WINDOW_MODEL
+from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV_DIR, ML6_KEYWORD_MODEL, SLIDING_WINDOW_MODEL
 from ats_system.data import load_announcement, load_cvs
 from ats_system.results_io import build_ranking, save_results, timestamped_run_dir
 from ats_system.systems.baseline_keyword_match import BaselineKeywordMatcher
@@ -72,7 +72,7 @@ class AllRankingsRunner:
         *,
         limit: Optional[int] = None,
         announcement: Path = DEFAULT_ANNOUNCEMENT,
-        category: str = DEFAULT_CV_CATEGORY,
+        cv_dir: Path = DEFAULT_CV_DIR,
         save: bool = True,
     ) -> dict:
         """Pipeline complet : charge les données une fois, lance les 4 méthodes, sauvegarde.
@@ -80,7 +80,7 @@ class AllRankingsRunner:
         Args:
             limit:        Nombre maximum de CVs à classer (``None``/``0`` = tous).
             announcement: PDF de l'annonce (défaut : annonce par défaut du projet).
-            category:     Catégorie de CVs (sous-dossier de ``CV_DIR``).
+            cv_dir:       Dossier contenant les CVs PDF.
             save:         Si vrai, écrit un JSON par méthode sous
                           ``results/all_rankings/<horodatage>/``.
 
@@ -94,13 +94,13 @@ class AllRankingsRunner:
         print("Extraction du texte de l'annonce...")
         offre = load_announcement(announcement)
         offre_text = offre["content"]
-        cvs = load_cvs(category, limit)
+        cvs = load_cvs(cv_dir, limit)
         print(f"{len(cvs)} CVs chargés.")
 
         run_dir = timestamped_run_dir(METHOD) if save else None
         base_params = {
             "announcement": Path(announcement).name,
-            "category": category,
+            "cv_dir": str(cv_dir),
             "limit": limit if limit is not None else 0,
             "num_cvs": len(cvs),
         }

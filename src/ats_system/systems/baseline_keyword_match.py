@@ -12,7 +12,7 @@ from typing import Optional
 import nltk
 from nltk.corpus import stopwords
 
-from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV_CATEGORY
+from ats_system.config import DEFAULT_ANNOUNCEMENT, DEFAULT_CV_DIR
 from ats_system.data import load_announcement, load_cvs
 from ats_system.results_io import build_ranking, save_results, timestamped_run_dir
 
@@ -65,7 +65,7 @@ class BaselineKeywordMatcher:
         *,
         limit: Optional[int] = None,
         announcement: Path = DEFAULT_ANNOUNCEMENT,
-        category: str = DEFAULT_CV_CATEGORY,
+        cv_dir: Path = DEFAULT_CV_DIR,
         save: bool = True,
     ) -> list[tuple[str, float]]:
         """Pipeline complet : chargement du modèle, des données, scoring et sauvegarde.
@@ -73,7 +73,7 @@ class BaselineKeywordMatcher:
         Args:
             limit:        Nombre maximum de CVs à traiter (``None``/``0`` = tous).
             announcement: PDF de l'annonce (défaut : annonce par défaut du projet).
-            category:     Catégorie de CVs (sous-dossier de ``CV_DIR``).
+            cv_dir:       Dossier contenant les CVs PDF.
             save:         Si vrai, écrit le classement sous ``results/<METHOD>/<horodatage>/``.
 
         Returns:
@@ -81,7 +81,7 @@ class BaselineKeywordMatcher:
         """
         self.import_model()
         offre = load_announcement(announcement)
-        cvs = load_cvs(category, limit)
+        cvs = load_cvs(cv_dir, limit)
         scored = self.score_cvs(offre["content"], cvs)
 
         for cv_id, score in scored:
@@ -90,7 +90,7 @@ class BaselineKeywordMatcher:
         if save:
             params = {
                 "announcement": Path(announcement).name,
-                "category": category,
+                "cv_dir": str(cv_dir),
                 "limit": limit if limit is not None else 0,
                 "num_cvs": len(cvs),
             }

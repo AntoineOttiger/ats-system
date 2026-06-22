@@ -200,7 +200,7 @@ def _optimize_level(instruction: Optional[str] = None) -> ProfileLevel:
 # ---------------------------------------------------------------------------
 
 class SyntheticCVGenerator:
-    """Génère des CVs synthétiques PDF face à une annonce, via l'API Mistral.
+    """Génère des CVs synthétiques PDF face à une annonce, via l'API Mistral ou Claude.
 
     La proximité de chaque CV avec l'annonce est pilotée par un ``ProfileLevel``
     discret. La méthode principale :func:`generate_cvs` produit ``n`` CVs en cyclant
@@ -335,7 +335,7 @@ class SyntheticCVGenerator:
             logger.info("Génération du CV « à optimiser » (niveau : %s)", opt_level.name)
             text = self.generate_cv(announcement, opt_level)
 
-            file_name = f"cv_{n + 1:03d}_{opt_level.name}.pdf"
+            file_name = f"cv_{0:03d}_{opt_level.name}.pdf"
             generated.append(
                 {
                     "file": file_name,

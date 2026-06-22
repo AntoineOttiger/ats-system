@@ -16,8 +16,8 @@ RESULTS_DIR = PROJECT_ROOT / "results"
 
 # Valeurs par défaut utilisées par les scripts et les tests
 DEFAULT_ANNOUNCEMENT = ANNOUNCEMENTS_DIR / "mechanical_engineer_job_posting_2016.pdf"
-DEFAULT_CV_CATEGORY = "ENGINEERING"
-DEFAULT_CV = CV_DIR / DEFAULT_CV_CATEGORY / "12472574.pdf"
+DEFAULT_CV_DIR = CV_DIR / "ENGINEERING"
+DEFAULT_CV = DEFAULT_CV_DIR / "12472574.pdf"
 
 # Modèle utilisé par le SlidingWindowCVRanker (classement par fenêtre glissante).
 # Le fournisseur (Claude ou Mistral) est déduit du préfixe du nom — il suffit de

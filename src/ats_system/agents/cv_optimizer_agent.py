@@ -1,4 +1,4 @@
-"""Agent d'optimisation de CV face à une annonce (LangChain / LangGraph + Mistral).
+﻿"""Agent d'optimisation de CV face à une annonce (LangChain / LangGraph + Mistral).
 
 Mission de l'agent : réécrire un CV pour qu'il **remonte dans le classement** face aux
 autres candidats d'un dataset synthétique, sans inventer de qualifications — uniquement en
@@ -38,8 +38,9 @@ from langgraph.prebuilt import create_react_agent
 
 from ats_system.agents.dataset_loading import find_optimize_cv, load_competitors
 from ats_system.agents.dataset_rankers import DatasetRanker, build_dataset_ranker
-from ats_system.config import CV_OPTIMIZER_MODEL, CV_OPTIMIZER_RANKER, LLM_REQUESTS_PER_SECOND
+from ats_system.config import CV_OPTIMIZER_MODEL, CV_OPTIMIZER_RANKER, LLM_REQUESTS_PER_SECOND, LLM_TOKENS_PER_MINUTE
 from ats_system.data import write_text_pdf
+from ats_system.llm import TokensPerMinuteRateLimiter
 from ats_system.results_io import timestamped_run_dir
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,7 @@ class CVOptimizerAgent:
         num_passes: int = 3,
         api_key: Optional[str] = None,
         requests_per_second: float = LLM_REQUESTS_PER_SECOND,
+        tokens_per_minute: int = LLM_TOKENS_PER_MINUTE,
     ):
         """
         Args:
@@ -136,10 +138,12 @@ class CVOptimizerAgent:
         self.num_passes = num_passes
         self._api_key = api_key
         self.requests_per_second = requests_per_second
+        self.tokens_per_minute = tokens_per_minute
 
         self._llm: Optional[ChatMistralAI] = None
         self._ranker: Optional[DatasetRanker] = None
         self._rate_limiter: Optional[InMemoryRateLimiter] = None
+        self._tpm_limiter: Optional[TokensPerMinuteRateLimiter] = None
         self._agent = None
         # Cache rempli par import_model() : dicts {"id", "content"} des CVs concurrents.
         self._competitor_cvs: list[dict] = []
@@ -172,6 +176,7 @@ class CVOptimizerAgent:
             check_every_n_seconds=0.1,
             max_bucket_size=1,
         )
+        self._tpm_limiter = TokensPerMinuteRateLimiter(self.tokens_per_minute)
 
         self._llm = ChatMistralAI(
             model=self.model,
@@ -188,6 +193,7 @@ class CVOptimizerAgent:
         self._ranker = build_dataset_ranker(
             self.ranker_name,
             rate_limiter=self._rate_limiter,
+            tpm_limiter=self._tpm_limiter,
             window_size=self.window_size,
             num_passes=self.num_passes,
         )

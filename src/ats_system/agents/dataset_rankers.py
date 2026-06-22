@@ -1,4 +1,4 @@
-"""Adaptateurs unifiant les systèmes de ``systems/`` en signal de rang pour l'agent.
+﻿"""Adaptateurs unifiant les systèmes de ``systems/`` en signal de rang pour l'agent.
 
 Le ``CVOptimizerAgent`` a besoin d'un seul service : « classe ce CV candidat parmi les CVs
 concurrents d'un dataset, face à l'annonce » → un rang + un classement + une analyse. Mais les
@@ -30,6 +30,8 @@ from ats_system.systems import (
 
 if TYPE_CHECKING:
     from langchain_core.rate_limiters import BaseRateLimiter
+
+    from ats_system.llm import TokensPerMinuteRateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +92,13 @@ class SlidingWindowDatasetRanker:
         window_size: int = 4,
         num_passes: int = 3,
         rate_limiter: Optional["BaseRateLimiter"] = None,
+        tpm_limiter: Optional["TokensPerMinuteRateLimiter"] = None,
     ):
         self._ranker = SlidingWindowCVRanker(
             window_size=window_size,
             num_passes=num_passes,
             rate_limiter=rate_limiter,
+            tpm_limiter=tpm_limiter,
         )
 
     def import_model(self) -> None:
@@ -141,11 +145,13 @@ class HybridDatasetRanker:
         window_size: int = 4,
         num_passes: int = 3,
         rate_limiter: Optional["BaseRateLimiter"] = None,
+        tpm_limiter: Optional["TokensPerMinuteRateLimiter"] = None,
     ):
         self._ranker = HybridMl6SlidingWindowRanker(
             window_size=window_size,
             num_passes=num_passes,
             rate_limiter=rate_limiter,
+            tpm_limiter=tpm_limiter,
         )
 
     def import_model(self) -> None:
@@ -289,19 +295,21 @@ class EmbeddingDatasetRanker:
 # Registre + factory
 # ---------------------------------------------------------------------------
 
-def _build_sliding_window(*, rate_limiter, window_size, num_passes) -> DatasetRanker:
+def _build_sliding_window(*, rate_limiter, tpm_limiter, window_size, num_passes) -> DatasetRanker:
     return SlidingWindowDatasetRanker(
         window_size=window_size,
         num_passes=num_passes,
         rate_limiter=rate_limiter,
+        tpm_limiter=tpm_limiter,
     )
 
 
-def _build_hybrid(*, rate_limiter, window_size, num_passes) -> DatasetRanker:
+def _build_hybrid(*, rate_limiter, tpm_limiter, window_size, num_passes) -> DatasetRanker:
     return HybridDatasetRanker(
         window_size=window_size,
         num_passes=num_passes,
         rate_limiter=rate_limiter,
+        tpm_limiter=tpm_limiter,
     )
 
 
@@ -320,6 +328,7 @@ def build_dataset_ranker(
     name: str,
     *,
     rate_limiter: Optional["BaseRateLimiter"] = None,
+    tpm_limiter: Optional["TokensPerMinuteRateLimiter"] = None,
     window_size: int = 4,
     num_passes: int = 3,
 ) -> DatasetRanker:
@@ -327,8 +336,8 @@ def build_dataset_ranker(
 
     Args:
         name:         Nom du ranker (cf. ``CV_OPTIMIZER_RANKER`` dans ``config.py``).
-        rate_limiter: Limiteur de débit partagé, utilisé uniquement par le ranker LLM
-                      (``sliding_window``) ; ignoré par les autres.
+        rate_limiter: Limiteur RPS partagé, utilisé uniquement par les rankers LLM ; ignoré par les autres.
+        tpm_limiter:  Limiteur TPM partagé, utilisé uniquement par les rankers LLM ; ignoré par les autres.
         window_size:  Taille de fenêtre (``sliding_window`` uniquement).
         num_passes:   Nombre de passes (``sliding_window`` uniquement).
 
@@ -342,4 +351,4 @@ def build_dataset_ranker(
         raise ValueError(
             f"Ranker inconnu : {name!r}. Valeurs possibles : {valides}."
         ) from None
-    return factory(rate_limiter=rate_limiter, window_size=window_size, num_passes=num_passes)
+    return factory(rate_limiter=rate_limiter, tpm_limiter=tpm_limiter, window_size=window_size, num_passes=num_passes)

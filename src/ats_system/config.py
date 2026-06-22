@@ -22,7 +22,7 @@ DEFAULT_CV = DEFAULT_CV_DIR / "12472574.pdf"
 # Modèle utilisé par le SlidingWindowCVRanker (classement par fenêtre glissante).
 # Le fournisseur (Claude ou Mistral) est déduit du préfixe du nom — il suffit de
 # changer cette valeur pour basculer (ex. "mistral-small-latest").
-SLIDING_WINDOW_MODEL = "mistral-small-latest"
+SLIDING_WINDOW_MODEL = "mistral-small-2603"
 
 # Modèle HF (BERT, token-classification) utilisé par Ml6KeywordMatcher pour
 # l'extraction de mots-clés (et comme tokenizer par les scripts count_tokens).
@@ -30,18 +30,21 @@ ML6_KEYWORD_MODEL = "ml6team/keyphrase-extraction-kbir-inspec"
 
 # Modèle utilisé par le SyntheticCVGenerator (génération de CVs synthétiques).
 # Idem : fournisseur déduit du préfixe (ex. "claude-haiku-4-5" pour passer sur Claude).
-CV_GENERATOR_MODEL = "mistral-small-latest"
+CV_GENERATOR_MODEL = "mistral-small-2603"
 
 # Modèle Mistral utilisé par le CVOptimizerAgent (agent d'optimisation de CV, LangGraph)
-CV_OPTIMIZER_MODEL = "mistral-small-latest"
+CV_OPTIMIZER_MODEL = "mistral-small-2603"
 
 # Ranker utilisé par l'outil de feedback du CVOptimizerAgent (signal de rang du CV).
 # Clés possibles : "sliding_window" (LLM), "hybrid_ml6_sliding_window" (présélection
 # mots-clés ml6 puis affinage LLM), "baseline_keyword", "ml6_keyword", "embedding_cosine"
 # — cf. CV_OPTIMIZER_RANKERS dans agents/dataset_rankers.py. Changer la valeur suffit à
 # basculer la méthode de classement du dataset.
-CV_OPTIMIZER_RANKER = "ml6_keyword"
+CV_OPTIMIZER_RANKER = "hybrid_ml6_sliding_window"
 
 # Débit cible par défaut des appels LLM (requêtes/seconde) pour éviter les 429 de
 # l'API. Calibré sur le free tier Mistral (~1 req/s) ; à augmenter sur un tier payant.
 LLM_REQUESTS_PER_SECOND = 1.0
+
+# Quota cible en tokens par minute pour éviter les 429 TPM du free tier Mistral.
+LLM_TOKENS_PER_MINUTE = 49_000

@@ -1,4 +1,4 @@
-"""Optimiseur de CV « one-shot » face à une annonce (un seul appel LLM, sans boucle).
+﻿"""Optimiseur de CV « one-shot » face à une annonce (un seul appel LLM, sans boucle).
 
 Point de comparaison (baseline) face à l'agent adversarial
 (:class:`~ats_system.agents.cv_optimizer_agent.CVOptimizerAgent`) : là où l'agent ReAct
@@ -30,9 +30,9 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 
 from ats_system.agents.dataset_loading import find_optimize_cv, load_competitors
 from ats_system.agents.dataset_rankers import DatasetRanker, build_dataset_ranker
-from ats_system.config import CV_OPTIMIZER_MODEL, CV_OPTIMIZER_RANKER, LLM_REQUESTS_PER_SECOND
+from ats_system.config import CV_OPTIMIZER_MODEL, CV_OPTIMIZER_RANKER, LLM_REQUESTS_PER_SECOND, LLM_TOKENS_PER_MINUTE
 from ats_system.data import write_text_pdf
-from ats_system.llm import LLMClient
+from ats_system.llm import LLMClient, TokensPerMinuteRateLimiter
 from ats_system.results_io import timestamped_run_dir
 
 logger = logging.getLogger(__name__)
@@ -88,6 +88,7 @@ class OneShotCVOptimizer:
         num_passes: int = 3,
         api_key: Optional[str] = None,
         requests_per_second: float = LLM_REQUESTS_PER_SECOND,
+        tokens_per_minute: int = LLM_TOKENS_PER_MINUTE,
     ):
         """
         Args:
@@ -106,9 +107,10 @@ class OneShotCVOptimizer:
             num_passes:          Nombre de passes (ranker ``sliding_window`` uniquement).
             api_key:             Clé API. À défaut, la variable d'environnement du fournisseur
                                  (chargée de ``.env``).
-            requests_per_second: Débit cible des requêtes LLM (limiteur partagé entre le client
-                                 et le ranker) pour éviter les 429. Défaut :
-                                 ``LLM_REQUESTS_PER_SECOND``.
+            requests_per_second: Débit cible des requêtes LLM (limiteur RPS partagé) pour éviter les 429.
+                                 Défaut : ``LLM_REQUESTS_PER_SECOND``.
+            tokens_per_minute:   Quota en tokens/minute (limiteur TPM partagé) pour éviter les 429 TPM.
+                                 Défaut : ``LLM_TOKENS_PER_MINUTE``.
         """
         self.dataset_dir = Path(dataset_dir)
         self.announcement_text = announcement_text
@@ -121,10 +123,12 @@ class OneShotCVOptimizer:
         self.num_passes = num_passes
         self._api_key = api_key
         self.requests_per_second = requests_per_second
+        self.tokens_per_minute = tokens_per_minute
 
         self._llm: Optional[LLMClient] = None
         self._ranker: Optional[DatasetRanker] = None
         self._rate_limiter: Optional[InMemoryRateLimiter] = None
+        self._tpm_limiter: Optional[TokensPerMinuteRateLimiter] = None
         # Cache rempli par import_model() : dicts {"id", "content"} des CVs concurrents.
         self._competitor_cvs: list[dict] = []
 
@@ -147,11 +151,13 @@ class OneShotCVOptimizer:
             check_every_n_seconds=0.1,
             max_bucket_size=1,
         )
+        self._tpm_limiter = TokensPerMinuteRateLimiter(self.tokens_per_minute)
 
         self._llm = LLMClient(
             self.model,
             api_key=self._api_key,
             rate_limiter=self._rate_limiter,
+            tpm_limiter=self._tpm_limiter,
         )
         self._llm.import_model()
 
@@ -159,6 +165,7 @@ class OneShotCVOptimizer:
         self._ranker = build_dataset_ranker(
             self.ranker_name,
             rate_limiter=self._rate_limiter,
+            tpm_limiter=self._tpm_limiter,
             window_size=self.window_size,
             num_passes=self.num_passes,
         )

@@ -33,6 +33,8 @@ from ats_system.systems.sliding_window_ranker import RankingResult, SlidingWindo
 if TYPE_CHECKING:
     from langchain_core.rate_limiters import BaseRateLimiter
 
+    from ats_system.llm import TokensPerMinuteRateLimiter
+
 logger = logging.getLogger(__name__)
 
 METHOD = "hybrid_ranking"
@@ -85,6 +87,7 @@ class HybridMl6SlidingWindowRanker:
         api_key: Optional[str] = None,
         model: str = SLIDING_WINDOW_MODEL,
         rate_limiter: Optional["BaseRateLimiter"] = None,
+        tpm_limiter: Optional["TokensPerMinuteRateLimiter"] = None,
     ):
         """
         Args:
@@ -94,7 +97,8 @@ class HybridMl6SlidingWindowRanker:
             api_key:      Clé API du fournisseur (à défaut : variable d'environnement).
             model:        Modèle de l'affinage (fournisseur déduit du préfixe). Défaut :
                           ``SLIDING_WINDOW_MODEL`` (cf. ``config.py``).
-            rate_limiter: Limiteur de débit partagé transmis à la fenêtre glissante.
+            rate_limiter: Limiteur RPS partagé transmis à la fenêtre glissante.
+            tpm_limiter:  Limiteur TPM partagé transmis à la fenêtre glissante.
         """
         self.model = model
         self._ml6 = Ml6KeywordMatcher()
@@ -105,6 +109,7 @@ class HybridMl6SlidingWindowRanker:
             api_key=api_key,
             model=model,
             rate_limiter=rate_limiter,
+            tpm_limiter=tpm_limiter,
         )
 
     # ------------------------------------------------------------------

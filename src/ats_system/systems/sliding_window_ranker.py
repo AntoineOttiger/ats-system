@@ -21,6 +21,8 @@ from ats_system.results_io import build_ranking, save_results, timestamped_run_d
 if TYPE_CHECKING:
     from langchain_core.rate_limiters import BaseRateLimiter
 
+    from ats_system.llm import TokensPerMinuteRateLimiter
+
 logger = logging.getLogger(__name__)
 
 METHOD = "sliding_window_ranking"
@@ -74,6 +76,7 @@ class SlidingWindowCVRanker:
         api_key: Optional[str] = None,
         model: str = SLIDING_WINDOW_MODEL,
         rate_limiter: Optional["BaseRateLimiter"] = None,
+        tpm_limiter: Optional["TokensPerMinuteRateLimiter"] = None,
     ):
         """
         Args:
@@ -87,9 +90,10 @@ class SlidingWindowCVRanker:
             model:        Identifiant du modèle à utiliser. Le fournisseur (Claude
                           ou Mistral) est déduit de son préfixe. Défaut :
                           ``SLIDING_WINDOW_MODEL`` (défini dans ``config.py``).
-            rate_limiter: Limiteur de débit optionnel transmis au ``LLMClient`` pour
-                          plafonner la cadence des nombreux appels de la fenêtre
-                          glissante (évite les 429). Partageable avec d'autres clients.
+            rate_limiter: Limiteur RPS optionnel (``BaseRateLimiter``) transmis au
+                          ``LLMClient`` pour plafonner la cadence (évite les 429).
+            tpm_limiter:  Limiteur TPM optionnel (:class:`~ats_system.llm.TokensPerMinuteRateLimiter`)
+                          transmis au ``LLMClient`` pour plafonner la consommation de tokens.
         """
         self.window_size = window_size
         self.step_size = step_size if step_size is not None else max(1, window_size // 2)
@@ -98,6 +102,7 @@ class SlidingWindowCVRanker:
         self.model = model
         self._api_key = api_key
         self._rate_limiter = rate_limiter
+        self._tpm_limiter = tpm_limiter
         self._llm: Optional[LLMClient] = None
 
     # ------------------------------------------------------------------
@@ -111,7 +116,7 @@ class SlidingWindowCVRanker:
         l'argument ``api_key`` ou, à défaut, depuis la variable d'environnement du
         fournisseur, chargée d'un fichier ``.env``.
         """
-        self._llm = LLMClient(self.model, api_key=self._api_key, rate_limiter=self._rate_limiter)
+        self._llm = LLMClient(self.model, api_key=self._api_key, rate_limiter=self._rate_limiter, tpm_limiter=self._tpm_limiter)
         self._llm.import_model()
 
     def load_cvs(self, cvs: list[dict]) -> list[CV]:

@@ -20,10 +20,12 @@ Agents LangChain / LangGraph.
   LLM complet du dataset (coûteux) ; les rankers mots-clés/embeddings sont locaux et gratuits.
 
   Convention `import_model()` (charge le LLM Mistral, le ranker du dataset, construit un
-  limiteur de débit partagé `InMemoryRateLimiter` — un seul token bucket plafonne **tous** les
-  appels Mistral du processus, agent + ranker `sliding_window`, à `requests_per_second`
-  (défaut `LLM_REQUESTS_PER_SECOND`) — et met en cache les CVs concurrents) puis `stream()`
-  (trace des « pensées ») / `optimize()` → texte du CV optimisé.
+  `InMemoryRateLimiter` partagé (RPS, `requests_per_second` = `LLM_REQUESTS_PER_SECOND`) et un
+  `TokensPerMinuteRateLimiter` partagé (TPM, `tokens_per_minute` = `LLM_TOKENS_PER_MINUTE`) —
+  les deux limiteurs couvrent tous les appels Mistral du processus ; le TPM est transmis
+  uniquement au ranker (via `build_dataset_ranker`), pas à `ChatMistralAI` (incompatible) —
+  et met en cache les CVs concurrents) puis `stream()` (trace des « pensées ») / `optimize()` →
+  texte du CV optimisé.
 
   `run(save=True)` localise seul le CV « à optimiser » du dataset, l'optimise (en affichant la
   trace) et, si `save`, écrit le PDF du CV optimisé (`cv_optimise.pdf`) + un `meta.json`
@@ -40,7 +42,8 @@ Agents LangChain / LangGraph.
   LangGraph/ReAct, fournisseur déduit du préfixe de `CV_OPTIMIZER_MODEL`). Le rang du CV est
   mesuré **avant et après** la réécriture par le ranker choisi (`CV_OPTIMIZER_RANKER`) — pour
   le rapport seulement, **jamais montré au LLM**. Convention `import_model()` (charge
-  `LLMClient`, le ranker, construit un `InMemoryRateLimiter` partagé client+ranker, met en
+  `LLMClient`, le ranker, construit un `InMemoryRateLimiter` (RPS) et un
+  `TokensPerMinuteRateLimiter` (TPM, `LLM_TOKENS_PER_MINUTE`) partagés client+ranker, met en
   cache les CVs concurrents) puis `optimize(cv_text)` → texte du CV optimisé. `run(save=True)`
   localise seul le CV « à optimiser », mesure le rang initial, réécrit, re-mesure, et si
   `save` écrit `cv_optimise.pdf` + `meta.json` (dataset, annonce, modèle, ranker,
